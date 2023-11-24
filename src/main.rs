@@ -1,10 +1,9 @@
+use libc::c_char;
+use libc::{EXIT_FAILURE, EXIT_SUCCESS};
 use std::ffi::CString;
 use std::io::Write;
-use std::ptr::null_mut;
 use std::process::exit;
-
-use libc::{EXIT_SUCCESS, EXIT_FAILURE};
-use libc::c_char;
+use std::ptr::null_mut;
 
 #[repr(C)]
 struct InputBuffer {
@@ -12,6 +11,7 @@ struct InputBuffer {
     buffer_length: usize,
     input_length: isize,
 }
+#[allow(dead_code)]
 impl InputBuffer {
     pub fn new() -> InputBuffer {
         InputBuffer {
@@ -23,22 +23,28 @@ impl InputBuffer {
 }
 
 fn main() {
-    let mut input_buffer = InputBuffer::new();
     loop {
         print_prompt();
-        read_input(&mut input_buffer);
-
-        let input_buffer_str = c_char_to_string(input_buffer.buffer);
-        if input_buffer_str == ".exit" {
-            unsafe { close_input_buffer(&mut input_buffer); }
-            exit(EXIT_SUCCESS);
+        let input = read_input();
+        if input.starts_with('.') {
+            if let Err(e) = do_meta_command(&input) {
+                println!("{:?} '{}'", e, input);
+            }
         } else {
-            println!("Unrecognized command '{}'.\n", input_buffer_str);
+            match prepare_statement(&input) {
+                Ok(statement) => {
+                    execute_statement(statement);
+                    println!("Executed.");
+                }
+                Err(e) => {
+                    println!("{:?} {}", e, input);
+                }
+            }
         }
-        
     }
 }
 
+#[allow(dead_code)]
 fn c_char_to_string(buffer: *mut c_char) -> String {
     unsafe {
         let input_buffer_str = CString::from_raw(buffer);
@@ -55,7 +61,25 @@ fn print_prompt() {
     std::io::stdout().flush().expect("Failed to flush stdout");
 }
 
-fn read_input(input_buffer: &mut InputBuffer) {
+fn read_input() -> String {
+    let mut input = String::new();
+
+    if let Ok(bytes_read) = std::io::stdin().read_line(&mut input) {
+        if bytes_read <= 0 {
+            println!("Error reading input\n");
+            exit(libc::EXIT_FAILURE);
+        }
+    } else {
+        eprintln!("Error reading input");
+        std::process::exit(EXIT_FAILURE);
+    }
+
+    input.pop(); // remove '\n'
+
+    input
+}
+
+fn _read_input(input_buffer: &mut InputBuffer) {
     let mut input = String::new();
 
     if let Ok(bytes_read) = std::io::stdin().read_line(&mut input) {
@@ -65,7 +89,7 @@ fn read_input(input_buffer: &mut InputBuffer) {
         }
 
         let input_length = bytes_read - 1; // ignore newline
-        unsafe {        
+        unsafe {
             (*input_buffer).buffer = copy_to_buffer(input.as_ptr(), input_length);
         }
         (*input_buffer).buffer_length = input_length as usize;
@@ -75,7 +99,8 @@ fn read_input(input_buffer: &mut InputBuffer) {
     }
 }
 
-unsafe fn copy_to_buffer(src: *const u8, len: libc::size_t) -> *mut i8 { 
+#[allow(dead_code)]
+unsafe fn copy_to_buffer(src: *const u8, len: libc::size_t) -> *mut i8 {
     let buffer = libc::malloc(len) as *mut libc::c_char;
     if buffer.is_null() {
         eprintln!("Memory allocation failed");
@@ -87,6 +112,76 @@ unsafe fn copy_to_buffer(src: *const u8, len: libc::size_t) -> *mut i8 {
     buffer
 }
 
+#[allow(dead_code)]
 unsafe fn close_input_buffer(input_buffer: &mut InputBuffer) {
     libc::free(input_buffer.buffer as *mut libc::c_void);
+}
+
+enum MetaCommandResult {
+    UnrecognizedCommand,
+}
+impl std::fmt::Debug for MetaCommandResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display = match self {
+            MetaCommandResult::UnrecognizedCommand => "Unrecognized command",
+        };
+
+        write!(f, "{}", display)
+    }
+}
+
+fn do_meta_command(input: &str) -> Result<(), MetaCommandResult> {
+    if input == ".exit" {
+        exit(EXIT_SUCCESS);
+    } else {
+        return Err(MetaCommandResult::UnrecognizedCommand);
+    }
+}
+
+enum StatementType {
+    Insert,
+    Select,
+}
+
+struct Statement {
+    s_type: StatementType,
+}
+
+enum PrepareResult {
+    UnrecognizedCommand,
+}
+impl std::fmt::Debug for PrepareResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display = match self {
+            Self::UnrecognizedCommand => "Unrecognized keyword at start of",
+        };
+
+        write!(f, "{}", display)
+    }
+}
+
+fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
+    let cmd = buffer.trim_start_matches('.');
+    if cmd.starts_with("insert") {
+        Ok(Statement {
+            s_type: StatementType::Insert,
+        })
+    } else if cmd.starts_with("select") {
+        Ok(Statement {
+            s_type: StatementType::Select,
+        })
+    } else {
+        Err(PrepareResult::UnrecognizedCommand)
+    }
+}
+
+fn execute_statement(statement: Statement) {
+    match statement.s_type {
+        StatementType::Insert => {
+            println!("This is where we would do an insert");
+        }
+        StatementType::Select => {
+            println!("This is where we would do an select")
+        }
+    }
 }
