@@ -55,6 +55,7 @@ pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
 
 pub enum ExecuteResult {
     TableFull,
+    DuplicateKey,
 }
 
 pub fn execute_statement(statement: Statement, table: &mut Table) -> Result<(), ExecuteResult> {

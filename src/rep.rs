@@ -29,6 +29,9 @@ pub fn start(db_filename: String) {
                     Err(ExecuteResult::TableFull) => {
                         println!("Error: Table full.");
                     }
+                    Err(ExecuteResult::DuplicateKey) => {
+                        println!("Error: Duplicate key.");
+                    }
                 },
                 Err(PrepareResult::SyntaxError) => {
                     println!("Syntax error. Could not parse statement");

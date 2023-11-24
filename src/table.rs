@@ -1,7 +1,9 @@
-use crate::cursor::{table_end, table_start};
+use crate::cursor::{table_find, table_start};
 use crate::data::{deserialize_row, Row};
 use crate::node::leaf_node_insert;
-use crate::node_layout::{initialize_leaf_node, leaf_node_num_cells, LEAF_NODE_MAX_CELLS};
+use crate::node_layout::{
+    initialize_leaf_node, leaf_node_key, leaf_node_num_cells, LEAF_NODE_MAX_CELLS,
+};
 use crate::pager::Pager;
 use crate::statement::ExecuteResult;
 
@@ -44,13 +46,21 @@ impl Table {
         let node = self.pager.as_mut().unwrap().page(self.root_page_num);
 
         unsafe {
-            if *leaf_node_num_cells(node) >= LEAF_NODE_MAX_CELLS {
+            let num_cells = *leaf_node_num_cells(node);
+            if num_cells >= LEAF_NODE_MAX_CELLS {
                 return Err(ExecuteResult::TableFull);
             }
-        }
 
-        let mut cursor = table_end(self);
-        unsafe {
+            let key_to_insert = row.id as u8;
+            let mut cursor = table_find(self, key_to_insert);
+
+            if cursor.cell_num() < num_cells {
+                let key_at_index = *leaf_node_key(node, cursor.cell_num());
+                if key_at_index == key_to_insert {
+                    return Err(ExecuteResult::DuplicateKey);
+                }
+            }
+
             leaf_node_insert(&mut cursor, row.id as u8, &row);
         }
 

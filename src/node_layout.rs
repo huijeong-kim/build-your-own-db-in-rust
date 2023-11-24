@@ -1,14 +1,10 @@
 use crate::data::ROW_SIZE;
+use crate::node::{set_node_type, NodeType};
 use crate::table::PAGE_SIZE;
-
-enum NodeType {
-    Internal,
-    Leaf,
-}
 
 // Node header
 const NODE_TYPE_SIZE: usize = std::mem::size_of::<u8>();
-const NODE_TYPE_OFFSET: usize = 0;
+pub const NODE_TYPE_OFFSET: usize = 0;
 const IS_ROOT_SIZE: usize = std::mem::size_of::<u8>();
 const IS_ROOT_OFFSET: usize = NODE_TYPE_SIZE;
 const PARENT_POINTER_SIZE: usize = std::mem::size_of::<u32>();
@@ -47,6 +43,7 @@ pub unsafe fn leaf_node_value(node: *mut u8, cell_num: u8) -> *mut u8 {
 
 pub unsafe fn initialize_leaf_node(node: *mut u8) {
     std::ptr::write(leaf_node_num_cells(node), 0);
+    set_node_type(node, NodeType::Leaf);
 }
 
 pub fn print_constants() {

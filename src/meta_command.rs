@@ -1,8 +1,8 @@
+use crate::node::print_leaf_node;
 use crate::node_layout::print_constants;
 use crate::table::Table;
 use libc::EXIT_SUCCESS;
 use std::process::exit;
-use crate::node::print_leaf_node;
 
 pub enum MetaCommandResult {
     UnrecognizedCommand,
