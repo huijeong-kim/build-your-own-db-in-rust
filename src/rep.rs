@@ -9,14 +9,15 @@ use crate::{
     statement::{execute_statement, prepare_statement},
 };
 
-pub fn start() {
+pub fn start(db_filename: String) {
     let mut table = Table::new();
+    table.db_open(&db_filename);
 
     loop {
         print_prompt();
         let input = read_input();
         if input.starts_with('.') {
-            if let Err(e) = do_meta_command(&input) {
+            if let Err(e) = do_meta_command(&input, &mut table) {
                 println!("{:?} '{}'", e, input);
             }
         } else {

@@ -1,3 +1,4 @@
+use crate::table::Table;
 use libc::EXIT_SUCCESS;
 use std::process::exit;
 
@@ -14,8 +15,9 @@ impl std::fmt::Debug for MetaCommandResult {
     }
 }
 
-pub fn do_meta_command(input: &str) -> Result<(), MetaCommandResult> {
+pub fn do_meta_command(input: &str, table: &mut Table) -> Result<(), MetaCommandResult> {
     if input == ".exit" {
+        table.db_close();
         exit(EXIT_SUCCESS);
     } else {
         return Err(MetaCommandResult::UnrecognizedCommand);
