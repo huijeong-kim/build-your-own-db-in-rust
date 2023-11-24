@@ -1,13 +1,17 @@
+use libc::EXIT_FAILURE;
 use std::io::Write;
 use std::process::exit;
-use libc::EXIT_FAILURE;
 
+use crate::statement::{ExecuteResult, PrepareResult};
+use crate::table::Table;
 use crate::{
     meta_command::do_meta_command,
     statement::{execute_statement, prepare_statement},
 };
 
 pub fn start() {
+    let mut table = Table::new();
+
     loop {
         print_prompt();
         let input = read_input();
@@ -17,12 +21,19 @@ pub fn start() {
             }
         } else {
             match prepare_statement(&input) {
-                Ok(statement) => {
-                    execute_statement(statement);
-                    println!("Executed.");
+                Ok(statement) => match execute_statement(statement, &mut table) {
+                    Ok(_) => {
+                        println!("Executed.");
+                    }
+                    Err(ExecuteResult::TableFull) => {
+                        println!("Error: Table full.");
+                    }
+                },
+                Err(PrepareResult::SyntaxError) => {
+                    println!("Syntax error. Could not parse statement");
                 }
-                Err(e) => {
-                    println!("{:?} {}", e, input);
+                Err(PrepareResult::UnrecognizedCommand) => {
+                    println!("Unrecognized keyword at start of '{}'", input);
                 }
             }
         }

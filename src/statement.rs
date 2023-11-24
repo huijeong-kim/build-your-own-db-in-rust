@@ -1,47 +1,53 @@
-enum StatementType {
-    Insert,
-    Select,
-}
+use crate::data::Row;
+use crate::table::Table;
 
-pub struct Statement {
-    s_type: StatementType,
+pub enum Statement {
+    Insert(Row),
+    Select,
 }
 
 pub enum PrepareResult {
     UnrecognizedCommand,
-}
-impl std::fmt::Debug for PrepareResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let display = match self {
-            Self::UnrecognizedCommand => "Unrecognized keyword at start of",
-        };
-
-        write!(f, "{}", display)
-    }
+    SyntaxError,
 }
 
 pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
-    let cmd = buffer.trim_start_matches('.');
-    if cmd.starts_with("insert") {
-        Ok(Statement {
-            s_type: StatementType::Insert,
-        })
-    } else if cmd.starts_with("select") {
-        Ok(Statement {
-            s_type: StatementType::Select,
-        })
+    let args: Vec<&str> = buffer.split(' ').collect();
+    if args[0] == "insert" {
+        // insert id username email
+        if args.len() < 4 {
+            return Err(PrepareResult::SyntaxError);
+        }
+
+        let mut row = Row::new();
+        row.id = args[1].parse::<i32>().unwrap();
+
+        let username_len = args[2].as_bytes().len();
+        row.username[..username_len].copy_from_slice(args[2].as_bytes());
+
+        let email_len = args[3].as_bytes().len();
+        row.email[..email_len].copy_from_slice(args[3].as_bytes());
+
+        Ok(Statement::Insert(row))
+    } else if args[0] == "select" {
+        // select id username email
+        if args.len() < 1 {
+            return Err(PrepareResult::SyntaxError);
+        }
+
+        Ok(Statement::Select)
     } else {
         Err(PrepareResult::UnrecognizedCommand)
     }
 }
 
-pub fn execute_statement(statement: Statement) {
-    match statement.s_type {
-        StatementType::Insert => {
-            println!("This is where we would do an insert");
-        }
-        StatementType::Select => {
-            println!("This is where we would do an select")
-        }
+pub enum ExecuteResult {
+    TableFull,
+}
+
+pub fn execute_statement(statement: Statement, table: &mut Table) -> Result<(), ExecuteResult> {
+    match statement {
+        Statement::Insert(row) => table.insert(row),
+        Statement::Select => table.select(),
     }
 }
