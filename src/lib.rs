@@ -1,3 +1,4 @@
+pub mod cursor;
 pub mod data;
 pub mod meta_command;
 pub mod pager;

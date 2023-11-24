@@ -1,3 +1,4 @@
+use crate::cursor::{table_end, table_start};
 use crate::data::{deserialize_row, serialize_row, Row, ROW_SIZE};
 use crate::pager::Pager;
 use crate::statement::ExecuteResult;
@@ -36,11 +37,9 @@ impl Table {
             return Err(ExecuteResult::TableFull);
         }
 
-        let (page_num, byte_offset) = self.row_slot(self.num_rows);
-
+        let mut cursor = table_end(self);
         unsafe {
-            let page_ptr = self.pager.as_mut().unwrap().page(page_num).add(byte_offset) as *mut _;
-            serialize_row(&row, page_ptr);
+            serialize_row(&row, cursor.value());
         }
 
         self.num_rows += 1;
@@ -50,27 +49,25 @@ impl Table {
 
     pub fn select(&mut self) -> Result<(), ExecuteResult> {
         let mut row = Row::new();
-        for i in 0..self.num_rows {
-            let (page_num, byte_offset) = self.row_slot(i);
 
+        let mut cursor = table_start(self);
+        while !cursor.end_of_table() {
             unsafe {
-                let page_ptr =
-                    self.pager.as_mut().unwrap().page(page_num).add(byte_offset) as *const _;
-                deserialize_row(page_ptr, &mut row);
+                deserialize_row(cursor.value(), &mut row);
             }
 
             println!("{}", row);
+            cursor.advance();
         }
 
         Ok(())
     }
 
-    pub fn row_slot(&mut self, row_num: usize) -> (usize, usize) {
-        let page_num = row_num / ROWS_PER_PAGE;
+    pub fn num_rows(&self) -> usize {
+        self.num_rows
+    }
 
-        let row_offset = row_num % ROWS_PER_PAGE;
-        let byte_offset = row_offset * ROW_SIZE;
-
-        (page_num, byte_offset)
+    pub fn pager(&mut self) -> &mut Pager {
+        self.pager.as_mut().unwrap()
     }
 }
