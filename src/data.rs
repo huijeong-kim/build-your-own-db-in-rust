@@ -4,7 +4,7 @@ pub const COLUMN_USERNAME_SIZE: usize = 32;
 pub const COLUMN_EMAIL_SIZE: usize = 255;
 
 pub struct Row {
-    pub id: i32,
+    pub id: u32,
     pub username: [u8; COLUMN_USERNAME_SIZE],
     pub email: [u8; COLUMN_EMAIL_SIZE],
 }
@@ -44,7 +44,7 @@ const EMAIL_OFFSET: usize = USERNAME_OFFSET + USERNAME_SIZE;
 pub const ROW_SIZE: usize = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
 
 pub unsafe fn serialize_row(source: &Row, dest: *mut u8) {
-    std::ptr::write(dest.add(ID_OFFSET) as *mut i32, source.id);
+    std::ptr::write(dest.add(ID_OFFSET) as *mut u32, source.id);
     std::ptr::write(
         dest.add(USERNAME_OFFSET) as *mut [u8; COLUMN_USERNAME_SIZE],
         source.username,
@@ -56,7 +56,7 @@ pub unsafe fn serialize_row(source: &Row, dest: *mut u8) {
 }
 
 pub unsafe fn deserialize_row(source: *const u8, dest: &mut Row) {
-    dest.id = std::ptr::read(source.add(ID_OFFSET) as *mut i32);
+    dest.id = std::ptr::read(source.add(ID_OFFSET) as *mut u32);
     dest.username = std::ptr::read(source.add(USERNAME_OFFSET) as *mut [u8; COLUMN_USERNAME_SIZE]);
     dest.email = std::ptr::read(source.add(EMAIL_OFFSET) as *mut [u8; COLUMN_EMAIL_SIZE]);
 }

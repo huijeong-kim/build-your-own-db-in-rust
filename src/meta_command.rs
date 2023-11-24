@@ -1,6 +1,8 @@
+use crate::node_layout::print_constants;
 use crate::table::Table;
 use libc::EXIT_SUCCESS;
 use std::process::exit;
+use crate::node::print_leaf_node;
 
 pub enum MetaCommandResult {
     UnrecognizedCommand,
@@ -16,10 +18,25 @@ impl std::fmt::Debug for MetaCommandResult {
 }
 
 pub fn do_meta_command(input: &str, table: &mut Table) -> Result<(), MetaCommandResult> {
-    if input == ".exit" {
-        table.db_close();
-        exit(EXIT_SUCCESS);
-    } else {
-        return Err(MetaCommandResult::UnrecognizedCommand);
+    match input {
+        ".exit" => {
+            table.db_close();
+            exit(EXIT_SUCCESS);
+        }
+        ".constants" => {
+            println!("Constants:");
+            print_constants();
+        }
+        ".btree" => {
+            println!("Tree:");
+            unsafe {
+                print_leaf_node(table.pager().page(0));
+            }
+        }
+        _ => {
+            return Err(MetaCommandResult::UnrecognizedCommand);
+        }
     }
+
+    Ok(())
 }

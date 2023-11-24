@@ -1,48 +1,66 @@
-use crate::data::ROW_SIZE;
-use crate::table::{Table, ROWS_PER_PAGE};
+use crate::node_layout::{leaf_node_num_cells, leaf_node_value};
+use crate::table::Table;
 
 pub struct Cursor<'a> {
     table: &'a mut Table,
-    row_num: usize,
+    page_num: usize,
+    cell_num: u8,
     end_of_table: bool,
 }
 
 pub fn table_start(table: &mut Table) -> Cursor {
-    let num_rows = table.num_rows();
+    let root_page_num = table.root_page_num();
+    let pager = table.pager();
+    let root_node = pager.page(root_page_num);
+    let num_cells = unsafe { *leaf_node_num_cells(root_node) };
+
     Cursor {
         table,
-        row_num: 0,
-        end_of_table: (num_rows == 0),
+        page_num: root_page_num,
+        cell_num: 0,
+        end_of_table: (num_cells == 0),
     }
 }
 
 pub fn table_end(table: &mut Table) -> Cursor {
-    let num_rows = table.num_rows();
+    let root_page_num = table.root_page_num();
+    let root_node = table.pager().page(root_page_num);
+    let num_cells = unsafe { *leaf_node_num_cells(root_node) };
+
     Cursor {
         table,
-        row_num: num_rows,
+        page_num: root_page_num,
+        cell_num: num_cells,
         end_of_table: true,
     }
 }
 
 impl Cursor<'_> {
-    pub(crate) fn advance(&mut self) {
-        self.row_num += 1;
+    pub fn advance(&mut self) {
+        let node = self.page();
+        self.cell_num += 1;
 
-        if self.row_num >= self.table.num_rows() {
-            self.end_of_table = true;
+        unsafe {
+            if self.cell_num >= *(leaf_node_num_cells(node)) {
+                self.end_of_table = true;
+            }
         }
     }
 
     pub unsafe fn value(&mut self) -> *mut u8 {
-        let page_num = self.row_num / ROWS_PER_PAGE;
-        let row_offset = self.row_num % ROWS_PER_PAGE;
-        let byte_offset = row_offset * ROW_SIZE;
-
-        self.table.pager().page(page_num).add(byte_offset) as *mut _
+        let page = self.page();
+        leaf_node_value(page, self.cell_num)
     }
 
     pub fn end_of_table(&self) -> bool {
         self.end_of_table
+    }
+
+    pub fn page(&mut self) -> *mut u8 {
+        self.table.pager().page(self.page_num as usize)
+    }
+
+    pub fn cell_num(&self) -> u8 {
+        self.cell_num
     }
 }

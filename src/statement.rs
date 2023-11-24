@@ -26,7 +26,7 @@ pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
         if id < 0 {
             return Err(PrepareResult::NegativeId);
         }
-        row.id = id;
+        row.id = id as u32;
 
         let username_len = args[2].as_bytes().len();
         if username_len > COLUMN_USERNAME_SIZE {

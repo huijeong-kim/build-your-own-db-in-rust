@@ -1,6 +1,8 @@
 pub mod cursor;
 pub mod data;
 pub mod meta_command;
+pub mod node;
+pub mod node_layout;
 pub mod pager;
 pub mod rep;
 pub mod statement;

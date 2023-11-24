@@ -1,5 +1,4 @@
-use crate::data::ROW_SIZE;
-use crate::table::{PAGE_SIZE, ROWS_PER_PAGE, TABLE_MAX_PAGES};
+use crate::table::{PAGE_SIZE, TABLE_MAX_PAGES};
 use libc::EXIT_FAILURE;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -7,6 +6,7 @@ use std::process::exit;
 
 pub struct Pager {
     file: File,
+    num_pages: usize,
     pages: [Option<[u8; PAGE_SIZE]>; TABLE_MAX_PAGES],
 }
 
@@ -25,34 +25,30 @@ impl Pager {
             }
         };
 
+        let file_length = file.metadata().unwrap().len() as usize;
+        if file_length % PAGE_SIZE != 0 {
+            println!("Db file is not a whole number of pages. Corrupt file.");
+            exit(EXIT_FAILURE);
+        }
+
         Pager {
             file,
+            num_pages: file_length / PAGE_SIZE,
             pages: [None; TABLE_MAX_PAGES],
         }
     }
 
-    pub fn close(&mut self, num_rows: usize) {
-        let num_full_pages = num_rows / ROWS_PER_PAGE;
-        let num_additional_rows = num_rows % ROWS_PER_PAGE;
-
-        for page_number in 0..num_full_pages {
+    pub fn close(&mut self) {
+        for page_number in 0..self.num_pages {
             if self.pages[page_number].is_none() {
                 continue;
             }
-            self.flush_page(page_number, PAGE_SIZE);
+            self.flush_page(page_number);
             self.pages[page_number] = None;
-        }
-
-        if num_additional_rows > 0 {
-            let page_num = num_full_pages;
-            if self.pages[page_num].is_some() {
-                self.flush_page(page_num, num_additional_rows * ROW_SIZE);
-                self.pages[page_num] = None;
-            }
         }
     }
 
-    fn flush_page(&mut self, page_num: usize, size: usize) {
+    fn flush_page(&mut self, page_num: usize) {
         if self.pages[page_num].is_none() {
             println!("Tried to flush null page");
             exit(EXIT_FAILURE);
@@ -69,7 +65,7 @@ impl Pager {
         }
 
         let page = self.pages[page_num].as_ref().unwrap();
-        match self.file.write(&page[..size]) {
+        match self.file.write(page) {
             Ok(_) => {}
             Err(e) => {
                 println!("Error writing: {:?}", e.raw_os_error());
@@ -119,8 +115,16 @@ impl Pager {
             }
 
             self.pages[page_num] = Some(page);
+
+            if page_num >= self.num_pages {
+                self.num_pages = page_num + 1;
+            }
         }
 
         self.pages[page_num].as_ref().unwrap().as_ptr() as *mut _
+    }
+
+    pub fn num_pages(&self) -> usize {
+        self.num_pages
     }
 }
