@@ -1,7 +1,7 @@
 use std::fmt::Formatter;
 
-const COLUMN_USERNAME_SIZE: usize = 32;
-const COLUMN_EMAIL_SIZE: usize = 255;
+pub const COLUMN_USERNAME_SIZE: usize = 32;
+pub const COLUMN_EMAIL_SIZE: usize = 255;
 
 pub struct Row {
     pub id: i32,
@@ -24,8 +24,12 @@ impl std::fmt::Display for Row {
             f,
             "({}, {}, {})",
             self.id,
-            String::from_utf8_lossy(&self.username).to_string().trim_matches('\u{0000}'),
-            String::from_utf8_lossy(&self.email).to_string().trim_matches('\u{0000}')
+            String::from_utf8_lossy(&self.username)
+                .to_string()
+                .trim_matches('\u{0000}'),
+            String::from_utf8_lossy(&self.email)
+                .to_string()
+                .trim_matches('\u{0000}')
         )
     }
 }

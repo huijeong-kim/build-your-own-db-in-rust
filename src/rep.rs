@@ -35,6 +35,12 @@ pub fn start() {
                 Err(PrepareResult::UnrecognizedCommand) => {
                     println!("Unrecognized keyword at start of '{}'", input);
                 }
+                Err(PrepareResult::StringTooLong) => {
+                    println!("String is too long.");
+                }
+                Err(PrepareResult::NegativeId) => {
+                    println!("ID must be positive.");
+                }
             }
         }
     }

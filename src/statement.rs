@@ -1,4 +1,4 @@
-use crate::data::Row;
+use crate::data::{Row, COLUMN_EMAIL_SIZE, COLUMN_USERNAME_SIZE};
 use crate::table::Table;
 
 pub enum Statement {
@@ -9,6 +9,8 @@ pub enum Statement {
 pub enum PrepareResult {
     UnrecognizedCommand,
     SyntaxError,
+    StringTooLong,
+    NegativeId,
 }
 
 pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
@@ -20,12 +22,22 @@ pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
         }
 
         let mut row = Row::new();
-        row.id = args[1].parse::<i32>().unwrap();
+        let id = args[1].parse::<i32>().unwrap();
+        if id < 0 {
+            return Err(PrepareResult::NegativeId);
+        }
+        row.id = id;
 
         let username_len = args[2].as_bytes().len();
+        if username_len > COLUMN_USERNAME_SIZE {
+            return Err(PrepareResult::StringTooLong);
+        }
         row.username[..username_len].copy_from_slice(args[2].as_bytes());
 
         let email_len = args[3].as_bytes().len();
+        if email_len > COLUMN_EMAIL_SIZE {
+            return Err(PrepareResult::StringTooLong);
+        }
         row.email[..email_len].copy_from_slice(args[3].as_bytes());
 
         Ok(Statement::Insert(row))
