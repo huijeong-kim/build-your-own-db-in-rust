@@ -1,3 +1,3 @@
-Build your own database
+Rust Database Implementation
 
-following this: https://cstack.github.io/db_tutorial/
+The implementation follows the guide in https://cstack.github.io/db_tutorial/, but in Rust.
