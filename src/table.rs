@@ -43,14 +43,14 @@ impl Table {
         }
     }
 
-    pub fn insert(&mut self, row: Row) -> Result<(), ExecuteResult> {
+    pub fn insert(&mut self, row: Row) -> ExecuteResult {
         let root_page_num = self.root_page_num;
         let node = self.pager().page(root_page_num);
 
         unsafe {
             let num_cells = *leaf_node_num_cells(node);
             if num_cells >= LEAF_NODE_MAX_CELLS {
-                return Err(ExecuteResult::TableFull);
+                return ExecuteResult::TableFull;
             }
 
             let key_to_insert = row.id as u8;
@@ -60,17 +60,17 @@ impl Table {
             if cursor.cell_num() < num_cells {
                 let key_at_index = *leaf_node_key(node, cursor.cell_num());
                 if key_at_index == key_to_insert {
-                    return Err(ExecuteResult::DuplicateKey);
+                    return ExecuteResult::DuplicateKey;
                 }
             }
 
             leaf_node_insert(&mut cursor, row.id as u8, &row);
         }
 
-        Ok(())
+        ExecuteResult::Success
     }
 
-    pub fn select(&mut self) -> Result<(), ExecuteResult> {
+    pub fn select(&mut self) -> ExecuteResult {
         let mut row = Row::new();
 
         let root_page_num = self.root_page_num;
@@ -84,7 +84,7 @@ impl Table {
             cursor.advance();
         }
 
-        Ok(())
+        ExecuteResult::Success
     }
 
     pub fn print(&mut self) {

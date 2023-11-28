@@ -7,6 +7,7 @@ use crate::{
     meta_command::do_meta_command,
     statement::{execute_statement, prepare_statement},
 };
+use crate::statement::PrepareResult;
 
 pub fn start(db_filename: String) {
     let mut table = Table::new();
@@ -21,16 +22,12 @@ pub fn start(db_filename: String) {
             }
         } else {
             match prepare_statement(&input) {
-                Ok(statement) => match execute_statement(statement, &mut table) {
-                    Ok(_) => {
-                        println!("Executed.");
-                    }
-                    Err(e) => {
-                        println!("{}", e.err_msg());
-                    }
+                PrepareResult::Success(statement) => {
+                    let result = execute_statement(statement, &mut table);
+                    println!("{}", result.msg());
                 },
-                Err(e) => {
-                    println!("{}", e.err_msg(&input));
+                err => {
+                    println!("{}", err.err_msg(&input));
                 }
             }
         }
