@@ -2,12 +2,12 @@ use libc::EXIT_FAILURE;
 use std::io::Write;
 use std::process::exit;
 
+use crate::statement::PrepareResult;
 use crate::table::Table;
 use crate::{
     meta_command::do_meta_command,
     statement::{execute_statement, prepare_statement},
 };
-use crate::statement::PrepareResult;
 
 pub fn start(db_filename: String) {
     let mut table = Table::new();
@@ -25,7 +25,7 @@ pub fn start(db_filename: String) {
                 PrepareResult::Success(statement) => {
                     let result = execute_statement(statement, &mut table);
                     println!("{}", result.msg());
-                },
+                }
                 err => {
                     println!("{}", err.err_msg(&input));
                 }

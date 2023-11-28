@@ -1,11 +1,9 @@
 use crate::cursor::{table_find, table_start};
-use crate::row::{deserialize_row, Row};
+use crate::node::{initialize_leaf_node, leaf_node_key, leaf_node_num_cells};
 use crate::node::{leaf_node_insert, print_leaf_node};
-use crate::node::{
-    initialize_leaf_node, leaf_node_key, leaf_node_num_cells
-};
 use crate::node_layout::LEAF_NODE_MAX_CELLS;
 use crate::pager::Pager;
+use crate::row::{deserialize_row, Row};
 use crate::statement::ExecuteResult;
 
 pub const PAGE_SIZE: usize = 4096;
