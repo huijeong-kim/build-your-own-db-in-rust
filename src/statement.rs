@@ -1,4 +1,4 @@
-use crate::data::{Row, COLUMN_EMAIL_SIZE, COLUMN_USERNAME_SIZE};
+use crate::row::{Row, COLUMN_EMAIL_SIZE, COLUMN_USERNAME_SIZE};
 use crate::table::Table;
 
 pub enum Statement {

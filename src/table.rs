@@ -1,5 +1,5 @@
 use crate::cursor::{table_find, table_start};
-use crate::data::{deserialize_row, Row};
+use crate::row::{deserialize_row, Row};
 use crate::node::{leaf_node_insert, print_leaf_node};
 use crate::node::{
     initialize_leaf_node, leaf_node_key, leaf_node_num_cells
@@ -44,7 +44,8 @@ impl Table {
     }
 
     pub fn insert(&mut self, row: Row) -> Result<(), ExecuteResult> {
-        let node = self.pager.as_mut().unwrap().page(self.root_page_num);
+        let root_page_num = self.root_page_num;
+        let node = self.pager().page(root_page_num);
 
         unsafe {
             let num_cells = *leaf_node_num_cells(node);

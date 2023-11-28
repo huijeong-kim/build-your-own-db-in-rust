@@ -1,4 +1,4 @@
-use crate::data::ROW_SIZE;
+use crate::row::ROW_SIZE;
 use crate::table::PAGE_SIZE;
 
 // Node header
