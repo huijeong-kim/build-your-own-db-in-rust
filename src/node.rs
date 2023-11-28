@@ -52,11 +52,14 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
     serialize_row(value, leaf_node_value(node, cursor.cell_num()));
 }
 
-unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u32, value: &Row) {
+unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row) {
     let old_node = cursor.page();
     let new_page_num = cursor.pager().get_unused_page_num();
     let new_node = cursor.pager().page(new_page_num);
     initialize_leaf_node(new_node);
+    let old_node_next = std::ptr::read(leaf_node_next_leaf(old_node) as *const u32);
+    std::ptr::write(leaf_node_next_leaf(new_node) as *mut u32, old_node_next);
+    std::ptr::write(leaf_node_next_leaf(old_node) as *mut u32, new_page_num);
 
     for i in (0..=LEAF_NODE_MAX_CELLS as u32).rev() {
         let destination_node = if i >= LEAF_NODE_LEFT_SPLIT_COUNT as u32 {
@@ -72,8 +75,10 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u32, value: &Row
         //     i % LEAF_NODE_LEFT_SPLIT_COUNT
         // };
         if i == cursor.cell_num() {
-            let destination = leaf_node_cell(destination_node, index_within_node);
+            let destination = leaf_node_value(destination_node, index_within_node);
             serialize_row(value, destination);
+            let destination_key = leaf_node_key(destination_node, index_within_node);
+            std::ptr::write(destination_key as *mut u32, key);
         } else if i > cursor.cell_num() {
             copy_cell((old_node, i - 1), (destination_node, index_within_node));
         } else {
@@ -202,8 +207,13 @@ pub unsafe fn leaf_node_value(node: *mut u8, cell_num: u32) -> *mut u8 {
     leaf_node_cell(node, cell_num).add(LEAF_NODE_KEY_SIZE)
 }
 
+pub unsafe fn leaf_node_next_leaf(node: *mut u8) -> *mut u8 {
+    node.add(LEAF_NODE_NEXT_LEAF_OFFSET)
+}
+
 pub unsafe fn initialize_leaf_node(node: *mut u8) {
     std::ptr::write(leaf_node_num_cells(node) as *mut u32, 0);
+    std::ptr::write(leaf_node_next_leaf(node) as *mut u32, 0);
     set_node_type(node, NodeType::Leaf);
     set_node_root(node, false);
 }

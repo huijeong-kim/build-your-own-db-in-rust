@@ -69,14 +69,14 @@ impl Table {
     pub fn select(&mut self) -> ExecuteResult {
         let mut row = Row::new();
 
-        let mut cursor = table_start(self);
-        while !cursor.end_of_table() {
-            unsafe {
+        unsafe {
+            let mut cursor = table_start(self);
+            while !cursor.end_of_table() {
                 deserialize_row(cursor.value(), &mut row);
-            }
 
-            println!("{}", row);
-            cursor.advance();
+                println!("{}", row);
+                cursor.advance();
+            }
         }
 
         ExecuteResult::Success

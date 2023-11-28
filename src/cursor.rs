@@ -1,5 +1,6 @@
 use crate::node::{
-    get_node_type, internal_node_child, internal_node_key, internal_node_num_keys, NodeType,
+    get_node_type, internal_node_child, internal_node_key, internal_node_num_keys,
+    leaf_node_next_leaf, NodeType,
 };
 use crate::node::{leaf_node_key, leaf_node_num_cells, leaf_node_value};
 use crate::pager::Pager;
@@ -12,19 +13,13 @@ pub struct Cursor<'a> {
     end_of_table: bool,
 }
 
-#[allow(dead_code)]
-pub fn table_start(table: &mut Table) -> Cursor {
-    let root_page_num = table.root_page_num();
-    let pager = table.pager();
-    let root_node = pager.page(root_page_num);
-    let num_cells = unsafe { std::ptr::read(leaf_node_num_cells(root_node) as *const u32) };
+pub unsafe fn table_start(table: &mut Table) -> Cursor {
+    let mut cursor = table_find(table, 0);
+    let node = cursor.page();
+    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    cursor.end_of_table = num_cells == 0;
 
-    Cursor {
-        table,
-        page_num: root_page_num,
-        cell_num: 0,
-        end_of_table: (num_cells == 0),
-    }
+    cursor
 }
 
 pub fn table_end(table: &mut Table) -> Cursor {
@@ -106,8 +101,8 @@ unsafe fn internal_node_find(table: &mut Table, page_number: u32, key: u32) -> C
     let child_num = std::ptr::read(internal_node_child(node, min_index) as *const u32);
     let child = table.pager().page(child_num);
     match get_node_type(child) {
-        NodeType::Internal => leaf_node_find(table, child_num, key),
-        NodeType::Leaf => internal_node_find(table, child_num, key),
+        NodeType::Internal => internal_node_find(table, child_num, key),
+        NodeType::Leaf => leaf_node_find(table, child_num, key),
     }
 }
 
@@ -118,7 +113,13 @@ impl Cursor<'_> {
 
         unsafe {
             if self.cell_num >= std::ptr::read(leaf_node_num_cells(node) as *const u32) {
-                self.end_of_table = true;
+                let next_page_num = std::ptr::read(leaf_node_next_leaf(node) as *const u32);
+                if next_page_num == 0 {
+                    self.end_of_table = true;
+                } else {
+                    self.page_num = next_page_num;
+                    self.cell_num = 0;
+                }
             }
         }
     }
