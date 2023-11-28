@@ -34,7 +34,7 @@ impl std::fmt::Display for Row {
     }
 }
 
-const ID_SIZE: usize = std::mem::size_of::<i32>();
+const ID_SIZE: usize = std::mem::size_of::<u32>();
 const USERNAME_SIZE: usize = COLUMN_USERNAME_SIZE;
 const EMAIL_SIZE: usize = COLUMN_EMAIL_SIZE;
 

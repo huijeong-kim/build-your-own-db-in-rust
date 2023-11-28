@@ -1,5 +1,6 @@
 use crate::node::{get_node_type, NodeType};
 use crate::node::{leaf_node_key, leaf_node_num_cells, leaf_node_value};
+use crate::pager::Pager;
 use crate::table::Table;
 use libc::EXIT_FAILURE;
 use std::process::exit;
@@ -109,6 +110,13 @@ impl Cursor<'_> {
 
     pub fn page(&mut self) -> *mut u8 {
         self.table.pager().page(self.page_num)
+    }
+
+    pub fn table(&mut self) -> &mut Table {
+        &mut self.table
+    }
+    pub fn pager(&mut self) -> &mut Pager {
+        self.table.pager()
     }
 
     pub fn cell_num(&self) -> u8 {

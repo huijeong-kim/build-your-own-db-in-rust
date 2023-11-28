@@ -74,6 +74,9 @@ impl Pager {
         }
     }
 
+    pub fn get_unused_page_num(&self) -> usize {
+        self.num_pages
+    }
     pub fn file_size(&self) -> u64 {
         self.file.metadata().unwrap().len()
     }
