@@ -83,6 +83,16 @@ pub unsafe fn leaf_node_find(table: &mut Table, page_num: u32, key: u32) -> Curs
 
 unsafe fn internal_node_find(table: &mut Table, page_number: u32, key: u32) -> Cursor {
     let node = table.pager().page(page_number);
+    let child_index = internal_node_find_child(node, key);
+    let child_num = std::ptr::read(internal_node_child(node, child_index) as *const u32);
+    let child = table.pager().page(child_num);
+    match get_node_type(child) {
+        NodeType::Internal => internal_node_find(table, child_num, key),
+        NodeType::Leaf => leaf_node_find(table, child_num, key),
+    }
+}
+
+pub unsafe fn internal_node_find_child(node: *mut u8, key: u32) -> u32 {
     let num_keys = std::ptr::read(internal_node_num_keys(node) as *const u32);
 
     let mut min_index = 0u32;
@@ -98,12 +108,7 @@ unsafe fn internal_node_find(table: &mut Table, page_number: u32, key: u32) -> C
         }
     }
 
-    let child_num = std::ptr::read(internal_node_child(node, min_index) as *const u32);
-    let child = table.pager().page(child_num);
-    match get_node_type(child) {
-        NodeType::Internal => internal_node_find(table, child_num, key),
-        NodeType::Leaf => leaf_node_find(table, child_num, key),
-    }
+    min_index
 }
 
 impl Cursor<'_> {

@@ -1,4 +1,4 @@
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, internal_node_find_child};
 use crate::node_layout::*;
 use crate::pager::Pager;
 use crate::row::{serialize_row, Row};
@@ -41,7 +41,7 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
 
     if cursor.cell_num() < num_cells {
         for i in (cursor.cell_num() + 1..=num_cells).rev() {
-            copy_cell((node, i - 1), (node, i));
+            copy_leaf_cell((node, i - 1), (node, i));
         }
     }
 
@@ -54,9 +54,14 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
 
 unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row) {
     let old_node = cursor.page();
+    let old_max = get_node_max_key(old_node);
     let new_page_num = cursor.pager().get_unused_page_num();
     let new_node = cursor.pager().page(new_page_num);
     initialize_leaf_node(new_node);
+
+    let old_node_parent = std::ptr::read(node_parent(old_node) as *const u32);
+    std::ptr::write(node_parent(new_node) as *mut u32, old_node_parent);
+
     let old_node_next = std::ptr::read(leaf_node_next_leaf(old_node) as *const u32);
     std::ptr::write(leaf_node_next_leaf(new_node) as *mut u32, old_node_next);
     std::ptr::write(leaf_node_next_leaf(old_node) as *mut u32, new_page_num);
@@ -80,9 +85,9 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row)
             let destination_key = leaf_node_key(destination_node, index_within_node);
             std::ptr::write(destination_key as *mut u32, key);
         } else if i > cursor.cell_num() {
-            copy_cell((old_node, i - 1), (destination_node, index_within_node));
+            copy_leaf_cell((old_node, i - 1), (destination_node, index_within_node));
         } else {
-            copy_cell((old_node, i), (destination_node, index_within_node));
+            copy_leaf_cell((old_node, i), (destination_node, index_within_node));
         }
     }
 
@@ -98,8 +103,49 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row)
     if is_node_root(old_node) {
         create_new_root(cursor.table(), new_page_num.try_into().unwrap());
     } else {
-        println!("Need to implement updating parent after split");
+        let parent_page_num = std::ptr::read(node_parent(old_node) as *const u32);
+        let new_max = get_node_max_key(old_node);
+        let parent = cursor.pager().page(parent_page_num);
+        update_internal_node_key(parent, old_max, new_max);
+        internal_node_insert(cursor.table(), parent_page_num, new_page_num);
+    }
+}
+
+unsafe fn update_internal_node_key(node: *mut u8, old_key: u32, new_key: u32) {
+    let old_child_index = internal_node_find_child(node, old_key);
+    std::ptr::write(internal_node_key(node, old_child_index) as *mut u32, new_key);
+}
+
+unsafe fn internal_node_insert(table: &mut Table, parent_page_num: u32, child_page_num: u32) {
+    let parent = table.pager().page(parent_page_num);
+    let child = table.pager().page(child_page_num);
+    let child_max_key = get_node_max_key(child);
+    let index = internal_node_find_child(parent, child_max_key);
+
+    let original_num_keys = std::ptr::read(internal_node_num_keys(parent) as *const u32);
+    std::ptr::write(internal_node_num_keys(parent) as *mut u32, original_num_keys + 1);
+
+    if original_num_keys >= INTERNAL_NODE_MAX_CELLS as u32 {
+        println!("Need to implement splitting internal node");
         exit(EXIT_FAILURE);
+    }
+
+    let right_child_page_num = std::ptr::read(internal_node_right_child(parent) as *mut u32);
+    let right_child = table.pager().page(right_child_page_num);
+
+    if child_max_key > get_node_max_key(right_child) {
+        // Replace right child
+        std::ptr::write(internal_node_child(parent, original_num_keys) as *mut u32, right_child_page_num);
+        std::ptr::write(internal_node_key(parent, original_num_keys) as *mut u32, get_node_max_key(right_child));
+        std::ptr::write(internal_node_right_child(parent) as *mut u32, child_page_num);
+    } else {
+        // Add to new cell
+        for i in (index+1..=original_num_keys).rev() {
+            copy_internal_cell((parent, i-1), (parent, i));
+        }
+
+        std::ptr::write(internal_node_child(parent, index) as *mut u32, child_page_num);
+        std::ptr::write(internal_node_key(parent, index) as *mut u32, child_max_key);
     }
 }
 
@@ -130,6 +176,10 @@ unsafe fn create_new_root(table: &mut Table, right_child_page_number: u32) {
         internal_node_right_child(root) as *mut u32,
         right_child_page_number,
     );
+
+    let right_child = table.pager().page(right_child_page_number);
+    std::ptr::write(node_parent(left_child) as *mut u32, table.root_page_num());
+    std::ptr::write(node_parent(right_child) as *mut u32, table.root_page_num());
 }
 
 pub unsafe fn get_node_type(node: *mut u8) -> NodeType {
@@ -256,6 +306,10 @@ unsafe fn initialize_internal_node(node: *mut u8) {
     std::ptr::write(internal_node_num_keys(node) as *mut u32, 0);
 }
 
+unsafe fn node_parent(node: *mut u8) -> *mut u8 {
+    node.add(PARENT_POINTER_OFFSET)
+}
+
 unsafe fn get_node_max_key(node: *mut u8) -> u32 {
     match get_node_type(node) {
         NodeType::Internal => {
@@ -287,10 +341,16 @@ pub unsafe fn set_node_root(node: *mut u8, is_root: bool) {
     );
 }
 
-unsafe fn copy_cell(src: (*mut u8, u32), dest: (*mut u8, u32)) {
+unsafe fn copy_leaf_cell(src: (*mut u8, u32), dest: (*mut u8, u32)) {
     let src_cell = leaf_node_cell(src.0, src.1);
     let dest_cell = leaf_node_cell(dest.0, dest.1);
-    std::ptr::copy_nonoverlapping(src_cell, dest_cell, LEAF_NODE_CELL_SIZE as usize);
+    std::ptr::copy_nonoverlapping(src_cell, dest_cell, LEAF_NODE_CELL_SIZE);
+}
+
+unsafe fn copy_internal_cell(src: (*mut u8, u32), dest: (*mut u8, u32)) {
+    let src_cell = internal_node_cell(src.0, src.1);
+    let dest_cell = internal_node_cell(dest.0, dest.1);
+    std::ptr::copy_nonoverlapping(src_cell, dest_cell, INTERNAL_NODE_CELL_SIZE);
 }
 
 unsafe fn copy_node(src: *mut u8, dest: *mut u8) {
