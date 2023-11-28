@@ -1,5 +1,5 @@
 use crate::node::{get_node_type, NodeType};
-use crate::node_layout::{leaf_node_key, leaf_node_num_cells, leaf_node_value};
+use crate::node::{leaf_node_key, leaf_node_num_cells, leaf_node_value};
 use crate::table::Table;
 use libc::EXIT_FAILURE;
 use std::process::exit;

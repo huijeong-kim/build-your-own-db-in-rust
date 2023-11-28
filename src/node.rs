@@ -1,9 +1,6 @@
 use crate::cursor::Cursor;
 use crate::data::{serialize_row, Row};
-use crate::node_layout::{
-    leaf_node_cell, leaf_node_key, leaf_node_num_cells, leaf_node_value, LEAF_NODE_CELL_SIZE,
-    LEAF_NODE_MAX_CELLS, NODE_TYPE_OFFSET,
-};
+use crate::node_layout::{LEAF_NODE_CELL_SIZE, LEAF_NODE_MAX_CELLS, NODE_TYPE_OFFSET, LEAF_NODE_NUM_CELLS_OFFSET, LEAF_NODE_HEADER_SIZE, LEAF_NODE_KEY_SIZE};
 use libc::EXIT_FAILURE;
 use std::process::exit;
 
@@ -73,3 +70,25 @@ pub unsafe fn print_leaf_node(node: *mut u8) {
         println!("   - {} : {}", i, key);
     }
 }
+
+pub unsafe fn leaf_node_num_cells(node: *mut u8) -> *mut u8 {
+    node.add(LEAF_NODE_NUM_CELLS_OFFSET) as *mut _
+}
+
+pub unsafe fn leaf_node_cell(node: *mut u8, cell_num: u8) -> *mut u8 {
+    node.add(LEAF_NODE_HEADER_SIZE + cell_num as usize * LEAF_NODE_CELL_SIZE)
+}
+
+pub unsafe fn leaf_node_key(node: *mut u8, cell_num: u8) -> *mut u8 {
+    leaf_node_cell(node, cell_num)
+}
+
+pub unsafe fn leaf_node_value(node: *mut u8, cell_num: u8) -> *mut u8 {
+    leaf_node_cell(node, cell_num).add(LEAF_NODE_KEY_SIZE)
+}
+
+pub unsafe fn initialize_leaf_node(node: *mut u8) {
+    std::ptr::write(leaf_node_num_cells(node), 0);
+    set_node_type(node, NodeType::Leaf);
+}
+

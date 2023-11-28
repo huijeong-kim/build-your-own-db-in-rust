@@ -1,9 +1,10 @@
 use crate::cursor::{table_find, table_start};
 use crate::data::{deserialize_row, Row};
 use crate::node::leaf_node_insert;
-use crate::node_layout::{
-    initialize_leaf_node, leaf_node_key, leaf_node_num_cells, LEAF_NODE_MAX_CELLS,
+use crate::node::{
+    initialize_leaf_node, leaf_node_key, leaf_node_num_cells
 };
+use crate::node_layout::LEAF_NODE_MAX_CELLS;
 use crate::pager::Pager;
 use crate::statement::ExecuteResult;
 
