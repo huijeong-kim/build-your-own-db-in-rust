@@ -1,4 +1,3 @@
-use crate::node::print_leaf_node;
 use crate::node_layout::print_constants;
 use crate::table::Table;
 use libc::EXIT_SUCCESS;
@@ -29,9 +28,7 @@ pub fn do_meta_command(input: &str, table: &mut Table) -> Result<(), MetaCommand
         }
         ".btree" => {
             println!("Tree:");
-            unsafe {
-                print_leaf_node(table.pager().page(0));
-            }
+            table.print();
         }
         _ => {
             return Err(MetaCommandResult::UnrecognizedCommand);

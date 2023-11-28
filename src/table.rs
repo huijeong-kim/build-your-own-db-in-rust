@@ -1,6 +1,6 @@
 use crate::cursor::{table_find, table_start};
 use crate::data::{deserialize_row, Row};
-use crate::node::leaf_node_insert;
+use crate::node::{leaf_node_insert, print_leaf_node};
 use crate::node::{
     initialize_leaf_node, leaf_node_key, leaf_node_num_cells
 };
@@ -53,7 +53,8 @@ impl Table {
             }
 
             let key_to_insert = row.id as u8;
-            let mut cursor = table_find(self, key_to_insert);
+            let root_page_num = self.root_page_num;
+            let mut cursor = table_find(self.pager(), root_page_num, key_to_insert);
 
             if cursor.cell_num() < num_cells {
                 let key_at_index = *leaf_node_key(node, cursor.cell_num());
@@ -71,7 +72,8 @@ impl Table {
     pub fn select(&mut self) -> Result<(), ExecuteResult> {
         let mut row = Row::new();
 
-        let mut cursor = table_start(self);
+        let root_page_num = self.root_page_num;
+        let mut cursor = table_start(self.pager(), root_page_num);
         while !cursor.end_of_table() {
             unsafe {
                 deserialize_row(cursor.value(), &mut row);
@@ -84,11 +86,13 @@ impl Table {
         Ok(())
     }
 
-    pub fn root_page_num(&self) -> usize {
-        self.root_page_num
+    pub fn print(&mut self) {
+        unsafe {
+            print_leaf_node(self.pager().page(0));
+        }
     }
 
-    pub fn pager(&mut self) -> &mut Pager {
+    fn pager(&mut self) -> &mut Pager {
         self.pager.as_mut().unwrap()
     }
 }
