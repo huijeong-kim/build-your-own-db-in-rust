@@ -1,9 +1,7 @@
-use crate::node::{get_node_type, NodeType};
+use crate::node::{get_node_type, internal_node_child, internal_node_key, internal_node_num_keys, NodeType};
 use crate::node::{leaf_node_key, leaf_node_num_cells, leaf_node_value};
 use crate::pager::Pager;
 use crate::table::Table;
-use libc::EXIT_FAILURE;
-use std::process::exit;
 
 pub struct Cursor<'a> {
     table: &'a mut Table,
@@ -43,11 +41,10 @@ pub unsafe fn table_find(table: &mut Table, key: u8) -> Cursor {
     let root_page_num = table.root_page_num();
     let root_node = table.pager().page(root_page_num);
 
-    if get_node_type(root_node) == NodeType::Leaf {
-        return leaf_node_find(table, root_page_num, key);
+    return if get_node_type(root_node) == NodeType::Leaf {
+        leaf_node_find(table, root_page_num, key)
     } else {
-        println!("Need to implement searching an internal node");
-        exit(EXIT_FAILURE);
+        internal_node_find(table, root_page_num, key)
     }
 }
 
@@ -84,6 +81,32 @@ pub unsafe fn leaf_node_find(table: &mut Table, page_num: usize, key: u8) -> Cur
         page_num,
         cell_num: min_index as u8,
         end_of_table: false,
+    }
+}
+
+
+unsafe fn internal_node_find(table: &mut Table, page_number: usize, key: u8) -> Cursor {
+    let node = table.pager().page(page_number);
+    let num_keys = *internal_node_num_keys(node);
+
+    let mut min_index = 0;
+    let mut max_index = num_keys;
+
+    while min_index != max_index {
+        let index = (min_index + max_index) / 2;
+        let key_to_right = *internal_node_key(node, index);
+        if key_to_right >= key {
+            max_index = index;
+        } else {
+            min_index = index + 1;
+        }
+    }
+
+    let child_num = *internal_node_child(node, min_index) as usize;
+    let child = table.pager().page(child_num);
+    match get_node_type(child) {
+        NodeType::Internal => leaf_node_find(table, child_num, key),
+        NodeType::Leaf => internal_node_find(table, child_num, key)
     }
 }
 

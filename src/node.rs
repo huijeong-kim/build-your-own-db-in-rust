@@ -90,7 +90,7 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u8, value: &Row)
     if is_node_root(old_node) {
         create_new_root(cursor.table(), new_page_num.try_into().unwrap());
     } else {
-        println!("Need to implement updating parent after split ");
+        println!("Need to implement updating parent after split");
         exit(EXIT_FAILURE);
     }
 }
@@ -196,7 +196,7 @@ pub unsafe fn initialize_leaf_node(node: *mut u8) {
     set_node_root(node, false);
 }
 
-unsafe fn internal_node_num_keys(node: *mut u8) -> *mut u8 {
+pub unsafe fn internal_node_num_keys(node: *mut u8) -> *mut u8 {
     node.add(INTERNAL_NODE_NUM_KEYS_OFFSET)
 }
 
@@ -208,7 +208,7 @@ unsafe fn internal_node_cell(node: *mut u8, cell_num: u8) -> *mut u8 {
     node.add(INTERNAL_NODE_HEADER_SIZE + cell_num as usize * INTERNAL_NODE_CELL_SIZE)
 }
 
-unsafe fn internal_node_child(node: *mut u8, child_num: u8) -> *mut u8 {
+pub unsafe fn internal_node_child(node: *mut u8, child_num: u8) -> *mut u8 {
     let num_keys = *internal_node_num_keys(node);
 
     if child_num > num_keys {
@@ -224,7 +224,7 @@ unsafe fn internal_node_child(node: *mut u8, child_num: u8) -> *mut u8 {
     }
 }
 
-unsafe fn internal_node_key(node: *mut u8, key_num: u8) -> *mut u8 {
+pub unsafe fn internal_node_key(node: *mut u8, key_num: u8) -> *mut u8 {
     internal_node_cell(node, key_num).add(INTERNAL_NODE_CHILD_SIZE)
 }
 
