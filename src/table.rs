@@ -52,8 +52,7 @@ impl Table {
             }
 
             let key_to_insert = row.id as u8;
-            let root_page_num = self.root_page_num;
-            let mut cursor = table_find(self.pager(), root_page_num, key_to_insert);
+            let mut cursor = table_find(self, key_to_insert);
 
             if cursor.cell_num() < num_cells {
                 let key_at_index = *leaf_node_key(node, cursor.cell_num());
@@ -71,8 +70,7 @@ impl Table {
     pub fn select(&mut self) -> ExecuteResult {
         let mut row = Row::new();
 
-        let root_page_num = self.root_page_num;
-        let mut cursor = table_start(self.pager(), root_page_num);
+        let mut cursor = table_start(self);
         while !cursor.end_of_table() {
             unsafe {
                 deserialize_row(cursor.value(), &mut row);
@@ -91,7 +89,11 @@ impl Table {
         }
     }
 
-    fn pager(&mut self) -> &mut Pager {
+    pub fn root_page_num(&self) -> usize {
+        self.root_page_num
+    }
+
+    pub fn pager(&mut self) -> &mut Pager {
         self.pager.as_mut().unwrap()
     }
 }
