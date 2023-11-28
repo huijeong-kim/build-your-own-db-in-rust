@@ -6,8 +6,8 @@ use std::process::exit;
 
 pub struct Pager {
     file: File,
-    num_pages: usize,
-    pages: [Option<[u8; PAGE_SIZE]>; TABLE_MAX_PAGES],
+    num_pages: u32,
+    pages: [Option<[u8; PAGE_SIZE as usize]>; TABLE_MAX_PAGES as usize],
 }
 
 impl Pager {
@@ -25,7 +25,7 @@ impl Pager {
             }
         };
 
-        let file_length = file.metadata().unwrap().len() as usize;
+        let file_length = file.metadata().unwrap().len() as u32;
         if file_length % PAGE_SIZE != 0 {
             println!("Db file is not a whole number of pages. Corrupt file.");
             exit(EXIT_FAILURE);
@@ -33,23 +33,23 @@ impl Pager {
 
         Pager {
             file,
-            num_pages: file_length / PAGE_SIZE,
-            pages: [None; TABLE_MAX_PAGES],
+            num_pages: file_length as u32 / PAGE_SIZE,
+            pages: [None; TABLE_MAX_PAGES as usize],
         }
     }
 
     pub fn close(&mut self) {
         for page_number in 0..self.num_pages {
-            if self.pages[page_number].is_none() {
+            if self.pages[page_number as usize].is_none() {
                 continue;
             }
             self.flush_page(page_number);
-            self.pages[page_number] = None;
+            self.pages[page_number as usize] = None;
         }
     }
 
-    fn flush_page(&mut self, page_num: usize) {
-        if self.pages[page_num].is_none() {
+    fn flush_page(&mut self, page_num: u32) {
+        if self.pages[page_num as usize].is_none() {
             println!("Tried to flush null page");
             exit(EXIT_FAILURE);
         }
@@ -64,7 +64,7 @@ impl Pager {
             }
         }
 
-        let page = self.pages[page_num].as_ref().unwrap();
+        let page = self.pages[page_num as usize].as_ref().unwrap();
         match self.file.write(page) {
             Ok(_) => {}
             Err(e) => {
@@ -74,14 +74,15 @@ impl Pager {
         }
     }
 
-    pub fn get_unused_page_num(&self) -> usize {
+    pub fn get_unused_page_num(&self) -> u32 {
         self.num_pages
     }
+
     pub fn file_size(&self) -> u64 {
         self.file.metadata().unwrap().len()
     }
 
-    pub fn page(&mut self, page_num: usize) -> *mut u8 {
+    pub fn page(&mut self, page_num: u32) -> *mut u8 {
         if page_num > TABLE_MAX_PAGES {
             println!(
                 "Tried to fetch page number out of bounds. {} > {}",
@@ -90,17 +91,17 @@ impl Pager {
             exit(EXIT_FAILURE);
         }
 
-        let mut page = [0; PAGE_SIZE];
+        let mut page = [0; PAGE_SIZE as usize];
 
-        if self.pages[page_num].is_none() {
+        if self.pages[page_num as usize].is_none() {
             // Cache miss. Allocate memory and load from file.
-            let file_length = self.file.metadata().unwrap().len() as usize;
+            let file_length = self.file.metadata().unwrap().len() as u32;
             let mut num_pages = file_length / PAGE_SIZE;
             if file_length % PAGE_SIZE != 0 {
                 num_pages += 1;
             }
 
-            if page_num <= num_pages as usize {
+            if page_num <= num_pages {
                 self.file
                     .seek(SeekFrom::Start((page_num * PAGE_SIZE) as u64))
                     .unwrap();
@@ -111,23 +112,23 @@ impl Pager {
                     PAGE_SIZE
                 };
 
-                if let Err(e) = self.file.read_exact(&mut page[0..len_to_read]) {
+                if let Err(e) = self.file.read_exact(&mut page[0..len_to_read as usize]) {
                     println!("Error reading file: {:?}", e.raw_os_error());
                     exit(EXIT_FAILURE);
                 }
             }
 
-            self.pages[page_num] = Some(page);
+            self.pages[page_num as usize] = Some(page);
 
             if page_num >= self.num_pages {
                 self.num_pages = page_num + 1;
             }
         }
 
-        self.pages[page_num].as_ref().unwrap().as_ptr() as *mut _
+        self.pages[page_num as usize].as_ref().unwrap().as_ptr() as *mut _
     }
 
-    pub fn num_pages(&self) -> usize {
+    pub fn num_pages(&self) -> u32 {
         self.num_pages
     }
 }

@@ -7,11 +7,11 @@ use crate::pager::Pager;
 use crate::row::{deserialize_row, Row};
 use crate::statement::ExecuteResult;
 
-pub const PAGE_SIZE: usize = 4096;
-pub const TABLE_MAX_PAGES: usize = 100;
+pub const PAGE_SIZE: u32 = 4096;
+pub const TABLE_MAX_PAGES: u32 = 100;
 
 pub struct Table {
-    root_page_num: usize,
+    root_page_num: u32,
     pager: Option<Pager>,
 }
 impl Table {
@@ -48,18 +48,19 @@ impl Table {
         let node = self.pager().page(root_page_num);
 
         unsafe {
-            let num_cells = *leaf_node_num_cells(node);
-            let key_to_insert = row.id as u8;
+            let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+            let key_to_insert = row.id;
             let mut cursor = table_find(self, key_to_insert);
 
             if cursor.cell_num() < num_cells {
-                let key_at_index = *leaf_node_key(node, cursor.cell_num());
+                let key_at_index =
+                    std::ptr::read(leaf_node_key(node, cursor.cell_num()) as *const u32);
                 if key_at_index == key_to_insert {
                     return ExecuteResult::DuplicateKey;
                 }
             }
 
-            leaf_node_insert(&mut cursor, row.id as u8, &row);
+            leaf_node_insert(&mut cursor, row.id, &row);
         }
 
         ExecuteResult::Success
@@ -87,7 +88,7 @@ impl Table {
         }
     }
 
-    pub fn root_page_num(&self) -> usize {
+    pub fn root_page_num(&self) -> u32 {
         self.root_page_num
     }
 

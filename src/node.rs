@@ -1,10 +1,5 @@
 use crate::cursor::Cursor;
-use crate::node_layout::{
-    INTERNAL_NODE_CELL_SIZE, INTERNAL_NODE_CHILD_SIZE, INTERNAL_NODE_HEADER_SIZE,
-    INTERNAL_NODE_NUM_KEYS_OFFSET, INTERNAL_NODE_RIGHT_CHILD_OFFSET, IS_ROOT_OFFSET,
-    LEAF_NODE_CELL_SIZE, LEAF_NODE_HEADER_SIZE, LEAF_NODE_KEY_SIZE, LEAF_NODE_LEFT_SPLIT_COUNT,
-    LEAF_NODE_MAX_CELLS, LEAF_NODE_NUM_CELLS_OFFSET, LEAF_NODE_RIGHT_SPLIT_COUNT, NODE_TYPE_OFFSET,
-};
+use crate::node_layout::*;
 use crate::pager::Pager;
 use crate::row::{serialize_row, Row};
 use crate::table::{Table, PAGE_SIZE};
@@ -34,11 +29,11 @@ impl From<NodeType> for u8 {
     }
 }
 
-pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u8, value: &Row) {
+pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
     let node = cursor.page();
 
-    let num_cells = *leaf_node_num_cells(node);
-    if num_cells >= LEAF_NODE_MAX_CELLS as u8 {
+    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    if num_cells >= LEAF_NODE_MAX_CELLS as u32 {
         // Node full
         leaf_node_split_and_insert(cursor, key, value);
         return;
@@ -50,25 +45,27 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u8, value: &Row) {
         }
     }
 
-    *(leaf_node_num_cells(node)) += 1;
-    *(leaf_node_key(node, cursor.cell_num())) = key;
+    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    std::ptr::write(leaf_node_num_cells(node) as *mut u32, num_cells + 1);
+
+    std::ptr::write(leaf_node_key(node, cursor.cell_num()) as *mut u32, key);
     serialize_row(value, leaf_node_value(node, cursor.cell_num()));
 }
 
-unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u8, value: &Row) {
+unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u32, value: &Row) {
     let old_node = cursor.page();
     let new_page_num = cursor.pager().get_unused_page_num();
     let new_node = cursor.pager().page(new_page_num);
     initialize_leaf_node(new_node);
 
-    for i in (0..=LEAF_NODE_MAX_CELLS).rev() {
-        let destination_node = if i >= LEAF_NODE_LEFT_SPLIT_COUNT {
+    for i in (0..=LEAF_NODE_MAX_CELLS as u32).rev() {
+        let destination_node = if i >= LEAF_NODE_LEFT_SPLIT_COUNT as u32 {
             new_node
         } else {
             old_node
         };
 
-        let index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT;
+        let index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT as u32;
         // let index_within_node = if i > LEAF_NODE_LEFT_SPLIT_COUNT {
         //     i % LEAF_NODE_RIGHT_SPLIT_COUNT
         // } else {
@@ -84,8 +81,14 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u8, value: &Row)
         }
     }
 
-    *(leaf_node_num_cells(old_node)) = LEAF_NODE_LEFT_SPLIT_COUNT;
-    *(leaf_node_num_cells(new_node)) = LEAF_NODE_RIGHT_SPLIT_COUNT;
+    std::ptr::write(
+        leaf_node_num_cells(old_node) as *mut u32,
+        LEAF_NODE_LEFT_SPLIT_COUNT as u32,
+    );
+    std::ptr::write(
+        leaf_node_num_cells(new_node) as *mut u32,
+        LEAF_NODE_RIGHT_SPLIT_COUNT as u32,
+    );
 
     if is_node_root(old_node) {
         create_new_root(cursor.table(), new_page_num.try_into().unwrap());
@@ -95,7 +98,7 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, _key: u8, value: &Row)
     }
 }
 
-unsafe fn create_new_root(table: &mut Table, right_child_page_number: usize) {
+unsafe fn create_new_root(table: &mut Table, right_child_page_number: u32) {
     let root_page_num = table.root_page_num();
     let root = table.pager().page(root_page_num);
 
@@ -111,11 +114,17 @@ unsafe fn create_new_root(table: &mut Table, right_child_page_number: usize) {
     // reset root as internal node
     initialize_internal_node(root);
     set_node_root(root, true);
-    *internal_node_num_keys(root) = 1;
-    *internal_node_child(root, 0) = left_child_page_num as u8;
+    std::ptr::write(internal_node_num_keys(root) as *mut u32, 1);
+    std::ptr::write(
+        internal_node_child(root, 0) as *mut u32,
+        left_child_page_num,
+    );
     let left_child_max_key = get_node_max_key(left_child);
-    *internal_node_key(root, 0) = left_child_max_key;
-    *internal_node_right_child(root) = right_child_page_number as u8;
+    std::ptr::write(internal_node_key(root, 0) as *mut u32, left_child_max_key);
+    std::ptr::write(
+        internal_node_right_child(root) as *mut u32,
+        right_child_page_number,
+    );
 }
 
 pub unsafe fn get_node_type(node: *mut u8) -> NodeType {
@@ -130,10 +139,10 @@ pub unsafe fn set_node_type(node: *mut u8, node_type: NodeType) {
 
 #[allow(dead_code)]
 pub unsafe fn print_leaf_node(node: *mut u8) {
-    let num_cells = *leaf_node_num_cells(node);
+    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
     println!("leaf (size {})", num_cells);
     for i in 0..num_cells {
-        let key = *leaf_node_key(node, i);
+        let key = std::ptr::read(leaf_node_key(node, i) as *const u32);
         println!("   - {} : {}", i, key);
     }
 }
@@ -143,32 +152,35 @@ fn indent(level: usize) {
     print!("{}", indent);
 }
 
-pub unsafe fn print_tree(pager: &mut Pager, page_num: usize, indentation_level: usize) {
+pub unsafe fn print_tree(pager: &mut Pager, page_num: u32, indentation_level: usize) {
     let node = pager.page(page_num);
 
     match get_node_type(node) {
         NodeType::Internal => {
-            let num_keys = *internal_node_num_keys(node);
+            let num_keys = std::ptr::read(internal_node_num_keys(node) as *const u32);
             indent(indentation_level);
             println!("- internal (size {})", num_keys);
 
             for i in 0..num_keys {
-                let child = *internal_node_child(node, i);
-                print_tree(pager, child as usize, indentation_level + 1);
+                let child = std::ptr::read(internal_node_child(node, i) as *const u32);
+                print_tree(pager, child, indentation_level + 1);
 
                 indent(indentation_level + 1);
-                println!("- key {}", *internal_node_key(node, i));
+                println!(
+                    "- key {}",
+                    std::ptr::read(internal_node_key(node, i) as *const u32)
+                );
             }
-            let child = *internal_node_right_child(node);
-            print_tree(pager, child as usize, indentation_level + 1);
+            let child = std::ptr::read(internal_node_right_child(node) as *const u32);
+            print_tree(pager, child, indentation_level + 1);
         }
         NodeType::Leaf => {
-            let num_keys = *leaf_node_num_cells(node);
+            let num_keys = std::ptr::read(leaf_node_num_cells(node) as *const u32);
             indent(indentation_level);
             println!("- leaf (size {})", num_keys);
             for i in 0..num_keys {
                 indent(indentation_level + 1);
-                println!("- {}", *leaf_node_key(node, i));
+                println!("- {}", std::ptr::read(leaf_node_key(node, i) as *const u32));
             }
         }
     }
@@ -178,20 +190,20 @@ pub unsafe fn leaf_node_num_cells(node: *mut u8) -> *mut u8 {
     node.add(LEAF_NODE_NUM_CELLS_OFFSET)
 }
 
-pub unsafe fn leaf_node_cell(node: *mut u8, cell_num: u8) -> *mut u8 {
+pub unsafe fn leaf_node_cell(node: *mut u8, cell_num: u32) -> *mut u8 {
     node.add(LEAF_NODE_HEADER_SIZE + cell_num as usize * LEAF_NODE_CELL_SIZE)
 }
 
-pub unsafe fn leaf_node_key(node: *mut u8, cell_num: u8) -> *mut u8 {
+pub unsafe fn leaf_node_key(node: *mut u8, cell_num: u32) -> *mut u8 {
     leaf_node_cell(node, cell_num)
 }
 
-pub unsafe fn leaf_node_value(node: *mut u8, cell_num: u8) -> *mut u8 {
+pub unsafe fn leaf_node_value(node: *mut u8, cell_num: u32) -> *mut u8 {
     leaf_node_cell(node, cell_num).add(LEAF_NODE_KEY_SIZE)
 }
 
 pub unsafe fn initialize_leaf_node(node: *mut u8) {
-    std::ptr::write(leaf_node_num_cells(node), 0);
+    std::ptr::write(leaf_node_num_cells(node) as *mut u32, 0);
     set_node_type(node, NodeType::Leaf);
     set_node_root(node, false);
 }
@@ -204,12 +216,12 @@ unsafe fn internal_node_right_child(node: *mut u8) -> *mut u8 {
     node.add(INTERNAL_NODE_RIGHT_CHILD_OFFSET)
 }
 
-unsafe fn internal_node_cell(node: *mut u8, cell_num: u8) -> *mut u8 {
+unsafe fn internal_node_cell(node: *mut u8, cell_num: u32) -> *mut u8 {
     node.add(INTERNAL_NODE_HEADER_SIZE + cell_num as usize * INTERNAL_NODE_CELL_SIZE)
 }
 
-pub unsafe fn internal_node_child(node: *mut u8, child_num: u8) -> *mut u8 {
-    let num_keys = *internal_node_num_keys(node);
+pub unsafe fn internal_node_child(node: *mut u8, child_num: u32) -> *mut u8 {
+    let num_keys = std::ptr::read(internal_node_num_keys(node) as *const u32);
 
     if child_num > num_keys {
         println!(
@@ -224,20 +236,26 @@ pub unsafe fn internal_node_child(node: *mut u8, child_num: u8) -> *mut u8 {
     }
 }
 
-pub unsafe fn internal_node_key(node: *mut u8, key_num: u8) -> *mut u8 {
-    internal_node_cell(node, key_num).add(INTERNAL_NODE_CHILD_SIZE)
+pub unsafe fn internal_node_key(node: *mut u8, key_num: u32) -> *mut u8 {
+    internal_node_cell(node, key_num).add(INTERNAL_NODE_CHILD_SIZE as usize)
 }
 
 unsafe fn initialize_internal_node(node: *mut u8) {
     set_node_type(node, NodeType::Internal);
     set_node_root(node, false);
-    *internal_node_num_keys(node) = 0;
+    std::ptr::write(internal_node_num_keys(node) as *mut u32, 0);
 }
 
-unsafe fn get_node_max_key(node: *mut u8) -> u8 {
+unsafe fn get_node_max_key(node: *mut u8) -> u32 {
     match get_node_type(node) {
-        NodeType::Internal => *internal_node_key(node, *internal_node_num_keys(node) - 1),
-        NodeType::Leaf => *leaf_node_key(node, *leaf_node_num_cells(node) - 1),
+        NodeType::Internal => {
+            let num_keys = std::ptr::read(internal_node_num_keys(node) as *const u32);
+            std::ptr::read(internal_node_key(node, num_keys - 1) as *const u32)
+        }
+        NodeType::Leaf => {
+            let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+            std::ptr::read(leaf_node_key(node, num_cells - 1) as *const u32)
+        }
     }
 }
 
@@ -253,15 +271,18 @@ unsafe fn is_node_root(node: *mut u8) -> bool {
 }
 
 pub unsafe fn set_node_root(node: *mut u8, is_root: bool) {
-    *node.add(IS_ROOT_OFFSET) = if is_root == true { 1u8 } else { 0u8 };
+    std::ptr::write(
+        node.add(IS_ROOT_OFFSET),
+        if is_root == true { 1u8 } else { 0u8 },
+    );
 }
 
-unsafe fn copy_cell(src: (*mut u8, u8), dest: (*mut u8, u8)) {
+unsafe fn copy_cell(src: (*mut u8, u32), dest: (*mut u8, u32)) {
     let src_cell = leaf_node_cell(src.0, src.1);
     let dest_cell = leaf_node_cell(dest.0, dest.1);
-    std::ptr::copy_nonoverlapping(src_cell, dest_cell, LEAF_NODE_CELL_SIZE);
+    std::ptr::copy_nonoverlapping(src_cell, dest_cell, LEAF_NODE_CELL_SIZE as usize);
 }
 
 unsafe fn copy_node(src: *mut u8, dest: *mut u8) {
-    std::ptr::copy_nonoverlapping(src, dest, PAGE_SIZE);
+    std::ptr::copy_nonoverlapping(src, dest, PAGE_SIZE as usize);
 }

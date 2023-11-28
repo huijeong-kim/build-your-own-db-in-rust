@@ -21,8 +21,8 @@ pub const LEAF_NODE_KEY_OFFSET: usize = 0;
 pub const LEAF_NODE_VALUE_SIZE: usize = ROW_SIZE;
 pub const LEAF_NODE_VALUE_OFFSET: usize = LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZE;
 pub const LEAF_NODE_CELL_SIZE: usize = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE;
-pub const LEAF_NODE_SPACE_FOR_CELLS: usize = PAGE_SIZE - LEAF_NODE_HEADER_SIZE;
-pub const LEAF_NODE_MAX_CELLS: u8 = (LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE) as u8;
+pub const LEAF_NODE_SPACE_FOR_CELLS: usize = PAGE_SIZE as usize - LEAF_NODE_HEADER_SIZE;
+pub const LEAF_NODE_MAX_CELLS: usize = LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE;
 
 // Internal node head
 pub const INTERNAL_NODE_NUM_KEYS_SIZE: usize = std::mem::size_of::<u32>();
@@ -38,8 +38,9 @@ pub const INTERNAL_NODE_KEY_SIZE: usize = std::mem::size_of::<u32>();
 pub const INTERNAL_NODE_CHILD_SIZE: usize = std::mem::size_of::<u32>();
 pub const INTERNAL_NODE_CELL_SIZE: usize = INTERNAL_NODE_CHILD_SIZE + INTERNAL_NODE_KEY_SIZE;
 
-pub const LEAF_NODE_LEFT_SPLIT_COUNT: u8 = (LEAF_NODE_MAX_CELLS + 1) / 2;
-pub const LEAF_NODE_RIGHT_SPLIT_COUNT: u8 = (LEAF_NODE_MAX_CELLS + 1) - LEAF_NODE_LEFT_SPLIT_COUNT;
+pub const LEAF_NODE_LEFT_SPLIT_COUNT: usize = (LEAF_NODE_MAX_CELLS + 1) / 2;
+pub const LEAF_NODE_RIGHT_SPLIT_COUNT: usize =
+    (LEAF_NODE_MAX_CELLS + 1) - LEAF_NODE_LEFT_SPLIT_COUNT;
 
 pub fn print_constants() {
     println!("ROW_SIZE: {}", ROW_SIZE);
