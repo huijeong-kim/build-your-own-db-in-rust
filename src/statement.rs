@@ -12,6 +12,16 @@ pub enum PrepareResult {
     StringTooLong,
     NegativeId,
 }
+impl PrepareResult {
+    pub fn err_msg(&self, input: &String) -> String {
+        match self {
+            PrepareResult::UnrecognizedCommand => { format!("Unrecognized keyword at start of '{}'", input) }
+            PrepareResult::SyntaxError => { String::from("Syntax error. Could not parse statement") }
+            PrepareResult::StringTooLong => { String::from("String is too long.") }
+            PrepareResult::NegativeId => { String::from("ID must be positive.") }
+        }
+    }
+}
 
 pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
     let args: Vec<&str> = buffer.split(' ').collect();
@@ -56,6 +66,14 @@ pub fn prepare_statement(buffer: &String) -> Result<Statement, PrepareResult> {
 pub enum ExecuteResult {
     TableFull,
     DuplicateKey,
+}
+impl ExecuteResult {
+    pub fn err_msg(&self) -> &str {
+        match self {
+            ExecuteResult::TableFull => { "Error: Table full." }
+            ExecuteResult::DuplicateKey => { "Error: Duplicated key."}
+        }
+    }
 }
 
 pub fn execute_statement(statement: Statement, table: &mut Table) -> Result<(), ExecuteResult> {

@@ -2,7 +2,6 @@ use libc::EXIT_FAILURE;
 use std::io::Write;
 use std::process::exit;
 
-use crate::statement::{ExecuteResult, PrepareResult};
 use crate::table::Table;
 use crate::{
     meta_command::do_meta_command,
@@ -26,24 +25,12 @@ pub fn start(db_filename: String) {
                     Ok(_) => {
                         println!("Executed.");
                     }
-                    Err(ExecuteResult::TableFull) => {
-                        println!("Error: Table full.");
-                    }
-                    Err(ExecuteResult::DuplicateKey) => {
-                        println!("Error: Duplicate key.");
+                    Err(e) => {
+                        println!("{}", e.err_msg());
                     }
                 },
-                Err(PrepareResult::SyntaxError) => {
-                    println!("Syntax error. Could not parse statement");
-                }
-                Err(PrepareResult::UnrecognizedCommand) => {
-                    println!("Unrecognized keyword at start of '{}'", input);
-                }
-                Err(PrepareResult::StringTooLong) => {
-                    println!("String is too long.");
-                }
-                Err(PrepareResult::NegativeId) => {
-                    println!("ID must be positive.");
+                Err(e) => {
+                    println!("{}", e.err_msg(&input));
                 }
             }
         }
