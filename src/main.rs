@@ -1,5 +1,5 @@
 use libc::EXIT_FAILURE;
-use my_sqlite::rep;
+use my_sqlite::repl;
 use std::env;
 use std::process::exit;
 
@@ -10,5 +10,5 @@ fn main() {
         exit(EXIT_FAILURE);
     }
 
-    rep::start(argv[1].clone());
+    repl::start(argv[1].clone());
 }
