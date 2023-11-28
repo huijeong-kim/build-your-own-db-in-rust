@@ -11,6 +11,7 @@ pub struct Cursor<'a> {
     end_of_table: bool,
 }
 
+#[allow(dead_code)]
 pub fn table_start(pager: &mut Pager, root_page_num: usize) -> Cursor {
     let root_node = pager.page(root_page_num);
     let num_cells = unsafe { *leaf_node_num_cells(root_node) };
@@ -36,7 +37,6 @@ pub fn table_end(pager: &mut Pager, root_page_num: usize) -> Cursor {
 }
 
 pub unsafe fn table_find(pager: &mut Pager, root_page_num: usize, key: u8) -> Cursor {
-
     let root_node = pager.page(root_page_num);
 
     if get_node_type(root_node) == NodeType::Leaf {
