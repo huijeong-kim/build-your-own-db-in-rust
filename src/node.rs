@@ -1,8 +1,8 @@
-use crate::cursor::{Cursor, internal_node_find_child};
+use crate::cursor::{internal_node_find_child, Cursor};
 use crate::node_layout::*;
 use crate::pager::Pager;
 use crate::row::{serialize_row, Row};
-use crate::table::{Table, PAGE_SIZE};
+use crate::table::{Table, INVALID_PAGE_NUM, PAGE_SIZE};
 use libc::EXIT_FAILURE;
 use std::process::exit;
 
@@ -54,7 +54,7 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
 
 unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row) {
     let old_node = cursor.page();
-    let old_max = get_node_max_key(old_node);
+    let old_max = get_node_max_key(cursor.pager(), old_node);
     let new_page_num = cursor.pager().get_unused_page_num();
     let new_node = cursor.pager().page(new_page_num);
     initialize_leaf_node(new_node);
@@ -104,7 +104,7 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row)
         create_new_root(cursor.table(), new_page_num.try_into().unwrap());
     } else {
         let parent_page_num = std::ptr::read(node_parent(old_node) as *const u32);
-        let new_max = get_node_max_key(old_node);
+        let new_max = get_node_max_key(cursor.pager(), old_node);
         let parent = cursor.pager().page(parent_page_num);
         update_internal_node_key(parent, old_max, new_max);
         internal_node_insert(cursor.table(), parent_page_num, new_page_num);
@@ -113,39 +113,153 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row)
 
 unsafe fn update_internal_node_key(node: *mut u8, old_key: u32, new_key: u32) {
     let old_child_index = internal_node_find_child(node, old_key);
-    std::ptr::write(internal_node_key(node, old_child_index) as *mut u32, new_key);
+    std::ptr::write(
+        internal_node_key(node, old_child_index) as *mut u32,
+        new_key,
+    );
 }
 
 unsafe fn internal_node_insert(table: &mut Table, parent_page_num: u32, child_page_num: u32) {
     let parent = table.pager().page(parent_page_num);
     let child = table.pager().page(child_page_num);
-    let child_max_key = get_node_max_key(child);
+    let child_max_key = get_node_max_key(table.pager(), child);
     let index = internal_node_find_child(parent, child_max_key);
 
     let original_num_keys = std::ptr::read(internal_node_num_keys(parent) as *const u32);
-    std::ptr::write(internal_node_num_keys(parent) as *mut u32, original_num_keys + 1);
-
     if original_num_keys >= INTERNAL_NODE_MAX_CELLS as u32 {
-        println!("Need to implement splitting internal node");
-        exit(EXIT_FAILURE);
+        internal_node_split_and_insert(table, parent_page_num, child_page_num);
+        return;
     }
 
     let right_child_page_num = std::ptr::read(internal_node_right_child(parent) as *mut u32);
-    let right_child = table.pager().page(right_child_page_num);
+    if right_child_page_num == INVALID_PAGE_NUM {
+        // empty internal node. add to right child
+        std::ptr::write(
+            internal_node_right_child(parent) as *mut u32,
+            child_page_num,
+        );
+        return;
+    }
 
-    if child_max_key > get_node_max_key(right_child) {
+    let right_child = table.pager().page(right_child_page_num);
+    std::ptr::write(
+        internal_node_num_keys(parent) as *mut u32,
+        original_num_keys + 1,
+    );
+
+    if child_max_key > get_node_max_key(table.pager(), right_child) {
         // Replace right child
-        std::ptr::write(internal_node_child(parent, original_num_keys) as *mut u32, right_child_page_num);
-        std::ptr::write(internal_node_key(parent, original_num_keys) as *mut u32, get_node_max_key(right_child));
-        std::ptr::write(internal_node_right_child(parent) as *mut u32, child_page_num);
+        std::ptr::write(
+            internal_node_child(parent, original_num_keys) as *mut u32,
+            right_child_page_num,
+        );
+        std::ptr::write(
+            internal_node_key(parent, original_num_keys) as *mut u32,
+            get_node_max_key(table.pager(), right_child),
+        );
+        std::ptr::write(
+            internal_node_right_child(parent) as *mut u32,
+            child_page_num,
+        );
     } else {
         // Add to new cell
-        for i in (index+1..=original_num_keys).rev() {
-            copy_internal_cell((parent, i-1), (parent, i));
+        for i in (index + 1..=original_num_keys).rev() {
+            copy_internal_cell((parent, i - 1), (parent, i));
         }
 
-        std::ptr::write(internal_node_child(parent, index) as *mut u32, child_page_num);
+        std::ptr::write(
+            internal_node_child(parent, index) as *mut u32,
+            child_page_num,
+        );
         std::ptr::write(internal_node_key(parent, index) as *mut u32, child_max_key);
+    }
+}
+
+unsafe fn internal_node_split_and_insert(
+    table: &mut Table,
+    parent_page_num: u32,
+    child_page_num: u32,
+) {
+    let mut old_page_num = parent_page_num;
+    let mut old_node = table.pager().page(old_page_num);
+    let old_max = get_node_max_key(table.pager(), old_node);
+
+    let child = table.pager().page(child_page_num);
+    let child_max = get_node_max_key(table.pager(), child);
+
+    let new_page_num = table.pager().get_unused_page_num();
+
+    let splitting_root = is_node_root(old_node);
+    let (parent, new_node) = if splitting_root {
+        create_new_root(table, new_page_num);
+        let root_page_num = table.root_page_num();
+        let parent = table.pager().page(root_page_num);
+
+        old_page_num = std::ptr::read(internal_node_child(parent, 0) as *const u32);
+        old_node = table.pager().page(old_page_num);
+
+        (parent, None)
+    } else {
+        let old_node_parent = std::ptr::read(node_parent(old_node) as *const u32);
+        let parent = table.pager().page(old_node_parent);
+        let new_node = table.pager().page(new_page_num);
+        initialize_internal_node(new_node);
+
+        (parent, Some(new_node))
+    };
+
+    let old_num_keys = internal_node_num_keys(old_node);
+
+    let mut cur_page_num = std::ptr::read(internal_node_right_child(old_node) as *const u32);
+    let mut cur = table.pager().page(cur_page_num);
+
+    // First put right child into new node and set right child of old node to invalid page number
+    internal_node_insert(table, new_page_num, cur_page_num);
+    std::ptr::write(node_parent(cur) as *mut u32, new_page_num);
+    std::ptr::write(
+        internal_node_right_child(old_node) as *mut u32,
+        INVALID_PAGE_NUM,
+    );
+
+    // For each key until you get to the middle key, move the key and the child to the new node
+    for i in (INTERNAL_NODE_MAX_CELLS / 2 + 1..INTERNAL_NODE_MAX_CELLS).rev() {
+        cur_page_num = std::ptr::read(internal_node_child(old_node, i as u32) as *const u32);
+        cur = table.pager().page(cur_page_num);
+
+        internal_node_insert(table, new_page_num, cur_page_num);
+        std::ptr::write(node_parent(cur) as *mut u32, new_page_num);
+
+        let old_num_keys_value = std::ptr::read(old_num_keys as *const u32);
+        std::ptr::write(old_num_keys as *mut u32, old_num_keys_value - 1);
+    }
+
+    // Set child before middle key, which is now the highest key, to be node's right child and decrement number of keys
+    let old_num_keys_value = std::ptr::read(old_num_keys as *const u32);
+    let new_right_child =
+        std::ptr::read(internal_node_child(old_node, old_num_keys_value - 1) as *const u32);
+    std::ptr::write(
+        internal_node_right_child(old_node) as *mut u32,
+        new_right_child,
+    );
+    std::ptr::write(old_num_keys as *mut u32, old_num_keys_value - 1);
+
+    // Determine which of the two nodes after the split should contain the child to be inserted and insert the child
+    let max_after_split = get_node_max_key(table.pager(), old_node);
+    let destination_page_num = if child_max < max_after_split {
+        old_page_num
+    } else {
+        new_page_num
+    };
+
+    internal_node_insert(table, destination_page_num, child_page_num);
+    std::ptr::write(node_parent(child) as *mut u32, destination_page_num);
+
+    update_internal_node_key(parent, old_max, get_node_max_key(table.pager(), old_node));
+
+    if !splitting_root {
+        let old_node_parent = std::ptr::read(node_parent(old_node) as *const u32);
+        internal_node_insert(table, old_node_parent, new_page_num);
+        std::ptr::write(node_parent(new_node.unwrap()) as *mut u32, old_node_parent);
     }
 }
 
@@ -153,14 +267,33 @@ unsafe fn create_new_root(table: &mut Table, right_child_page_number: u32) {
     let root_page_num = table.root_page_num();
     let root = table.pager().page(root_page_num);
 
+    let right_child = table.pager().page(right_child_page_number);
+
     let left_child_page_num = table.pager().get_unused_page_num();
     let left_child = table.pager().page(left_child_page_num);
+
+    if get_node_type(root) == NodeType::Internal {
+        initialize_internal_node(right_child);
+        initialize_internal_node(left_child);
+    }
 
     // Copy root data to new node(left_child)
     copy_node(root, left_child);
 
     // left_child is internal node
     set_node_root(left_child, false);
+
+    if get_node_type(left_child) == NodeType::Internal {
+        let left_child_num_keys = std::ptr::read(internal_node_num_keys(left_child) as *const u32);
+        for i in 0..left_child_num_keys {
+            let left_left_child = std::ptr::read(internal_node_child(left_child, i) as *const u32);
+            let child = table.pager().page(left_left_child);
+            std::ptr::write(node_parent(child) as *mut u32, left_child_page_num);
+        }
+        let left_right_child = std::ptr::read(internal_node_right_child(left_child) as *const u32);
+        let child = table.pager().page(left_right_child);
+        std::ptr::write(node_parent(child) as *mut u32, left_child_page_num);
+    }
 
     // reset root as internal node
     initialize_internal_node(root);
@@ -170,14 +303,13 @@ unsafe fn create_new_root(table: &mut Table, right_child_page_number: u32) {
         internal_node_child(root, 0) as *mut u32,
         left_child_page_num,
     );
-    let left_child_max_key = get_node_max_key(left_child);
+    let left_child_max_key = get_node_max_key(table.pager(), left_child);
     std::ptr::write(internal_node_key(root, 0) as *mut u32, left_child_max_key);
     std::ptr::write(
         internal_node_right_child(root) as *mut u32,
         right_child_page_number,
     );
 
-    let right_child = table.pager().page(right_child_page_number);
     std::ptr::write(node_parent(left_child) as *mut u32, table.root_page_num());
     std::ptr::write(node_parent(right_child) as *mut u32, table.root_page_num());
 }
@@ -216,18 +348,20 @@ pub unsafe fn print_tree(pager: &mut Pager, page_num: u32, indentation_level: us
             indent(indentation_level);
             println!("- internal (size {})", num_keys);
 
-            for i in 0..num_keys {
-                let child = std::ptr::read(internal_node_child(node, i) as *const u32);
-                print_tree(pager, child, indentation_level + 1);
+            if num_keys > 0 {
+                for i in 0..num_keys {
+                    let child = std::ptr::read(internal_node_child(node, i) as *const u32);
+                    print_tree(pager, child, indentation_level + 1);
 
-                indent(indentation_level + 1);
-                println!(
-                    "- key {}",
-                    std::ptr::read(internal_node_key(node, i) as *const u32)
-                );
+                    indent(indentation_level + 1);
+                    println!(
+                        "- key {}",
+                        std::ptr::read(internal_node_key(node, i) as *const u32)
+                    );
+                }
+                let child = std::ptr::read(internal_node_right_child(node) as *const u32);
+                print_tree(pager, child, indentation_level + 1);
             }
-            let child = std::ptr::read(internal_node_right_child(node) as *const u32);
-            print_tree(pager, child, indentation_level + 1);
         }
         NodeType::Leaf => {
             let num_keys = std::ptr::read(leaf_node_num_cells(node) as *const u32);
@@ -290,9 +424,25 @@ pub unsafe fn internal_node_child(node: *mut u8, child_num: u32) -> *mut u8 {
         );
         exit(EXIT_FAILURE);
     } else if child_num == num_keys {
+        let right_child = std::ptr::read(internal_node_right_child(node) as *const u32);
+        if right_child == INVALID_PAGE_NUM {
+            println!("Tried to access child of node, but was invalid page");
+            exit(EXIT_FAILURE);
+        }
+
         internal_node_right_child(node)
     } else {
-        internal_node_cell(node, child_num)
+        // child_num < num_keys
+        let child = internal_node_cell(node, child_num);
+        if std::ptr::read(child as *const u32) == INVALID_PAGE_NUM {
+            println!(
+                "Tried to access child {} of node, but was invalid page",
+                child_num
+            );
+            exit(EXIT_FAILURE);
+        }
+
+        child
     }
 }
 
@@ -304,17 +454,23 @@ unsafe fn initialize_internal_node(node: *mut u8) {
     set_node_type(node, NodeType::Internal);
     set_node_root(node, false);
     std::ptr::write(internal_node_num_keys(node) as *mut u32, 0);
+    std::ptr::write(
+        internal_node_right_child(node) as *mut u32,
+        INVALID_PAGE_NUM,
+    );
 }
 
 unsafe fn node_parent(node: *mut u8) -> *mut u8 {
     node.add(PARENT_POINTER_OFFSET)
 }
 
-unsafe fn get_node_max_key(node: *mut u8) -> u32 {
+unsafe fn get_node_max_key(pager: &mut Pager, node: *mut u8) -> u32 {
     match get_node_type(node) {
         NodeType::Internal => {
-            let num_keys = std::ptr::read(internal_node_num_keys(node) as *const u32);
-            std::ptr::read(internal_node_key(node, num_keys - 1) as *const u32)
+            let right_child_page_num =
+                std::ptr::read(internal_node_right_child(node) as *const u32);
+            let right_child = pager.page(right_child_page_num);
+            get_node_max_key(pager, right_child)
         }
         NodeType::Leaf => {
             let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);

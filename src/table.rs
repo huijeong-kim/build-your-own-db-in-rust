@@ -8,6 +8,7 @@ use crate::row::{deserialize_row, Row};
 use crate::statement::ExecuteResult;
 
 pub const PAGE_SIZE: u32 = 4096;
+pub const INVALID_PAGE_NUM: u32 = u32::MAX;
 pub const TABLE_MAX_PAGES: u32 = 100;
 
 pub struct Table {
