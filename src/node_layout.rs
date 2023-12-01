@@ -1,5 +1,5 @@
+use crate::pager::PAGE_SIZE;
 use crate::row::ROW_SIZE;
-use crate::table::PAGE_SIZE;
 
 // Node header (common header)
 pub const NODE_TYPE_SIZE: usize = std::mem::size_of::<u8>();

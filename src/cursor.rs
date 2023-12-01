@@ -1,8 +1,6 @@
-use crate::node::{
-    get_node_type, internal_node_child, internal_node_key, internal_node_num_keys,
-    leaf_node_next_leaf, NodeType,
-};
-use crate::node::{leaf_node_key, leaf_node_num_cells, leaf_node_value};
+use crate::node::{get_node_type, NodeType};
+use crate::node::internal_node::{internal_node_child, internal_node_key, internal_node_num_keys};
+use crate::node::leaf_node::{leaf_node_key, leaf_node_next_leaf, leaf_node_num_cells, leaf_node_value};
 use crate::pager::Pager;
 use crate::table::Table;
 
@@ -51,7 +49,7 @@ pub unsafe fn leaf_node_find(table: &mut Table, page_num: u32, key: u32) -> Curs
 
     // Binary search
     let mut min_index = 0u32;
-    let mut one_past_max_index = num_cells as u32;
+    let mut one_past_max_index = num_cells;
 
     while one_past_max_index != min_index {
         let index = (min_index + one_past_max_index) / 2;

@@ -1,15 +1,11 @@
 use crate::cursor::{table_find, table_start};
-use crate::node::{
-    initialize_leaf_node, leaf_node_insert, leaf_node_key, leaf_node_num_cells, print_tree,
-    set_node_root,
-};
+use crate::node::leaf_node::{initialize_leaf_node, leaf_node_insert, leaf_node_key, leaf_node_num_cells};
+use crate::node::{print_tree, set_node_root};
 use crate::pager::Pager;
 use crate::row::{deserialize_row, Row};
 use crate::statement::ExecuteResult;
 
-pub const PAGE_SIZE: u32 = 4096;
 pub const INVALID_PAGE_NUM: u32 = u32::MAX;
-pub const TABLE_MAX_PAGES: u32 = 100;
 
 pub struct Table {
     root_page_num: u32,

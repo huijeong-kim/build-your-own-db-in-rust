@@ -1,8 +1,10 @@
-use crate::table::{PAGE_SIZE, TABLE_MAX_PAGES};
 use libc::EXIT_FAILURE;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::process::exit;
+
+pub const PAGE_SIZE: u32 = 4096;
+pub const TABLE_MAX_PAGES: u32 = 100;
 
 pub struct Pager {
     file: File,
