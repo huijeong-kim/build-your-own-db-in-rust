@@ -1,5 +1,5 @@
 use crate::cursor::{table_find, table_start};
-use crate::node::leaf_node::{initialize_leaf_node, leaf_node_insert, leaf_node_key, leaf_node_num_cells};
+use crate::node::leaf_node::{get_leaf_node_key, get_leaf_node_num_cells, initialize_leaf_node, leaf_node_insert, LeafNode};
 use crate::node::{print_tree, set_node_root};
 use crate::pager::Pager;
 use crate::row::{deserialize_row, Row};
@@ -42,16 +42,16 @@ impl Table {
 
     pub fn insert(&mut self, row: Row) -> ExecuteResult {
         let root_page_num = self.root_page_num;
-        let node = self.pager().page(root_page_num);
+        let root_page = self.pager().page(root_page_num);
+        let root_node = LeafNode::new(root_page);
 
         unsafe {
-            let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+            let num_cells = root_node.get_num_cells();
             let key_to_insert = row.id;
             let mut cursor = table_find(self, key_to_insert);
 
             if cursor.cell_num() < num_cells {
-                let key_at_index =
-                    std::ptr::read(leaf_node_key(node, cursor.cell_num()) as *const u32);
+                let key_at_index = root_node.get_key(cursor.cell_num());
                 if key_at_index == key_to_insert {
                     return ExecuteResult::DuplicateKey;
                 }

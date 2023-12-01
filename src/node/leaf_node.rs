@@ -1,13 +1,14 @@
 use crate::cursor::Cursor;
-use crate::node::{create_new_root, get_node_max_key, is_node_root, node_parent, NodeType, set_node_root, set_node_type};
-use crate::node::internal_node::{internal_node_insert, update_internal_node_key};
-use crate::node_layout::{LEAF_NODE_CELL_SIZE, LEAF_NODE_HEADER_SIZE, LEAF_NODE_KEY_SIZE, LEAF_NODE_LEFT_SPLIT_COUNT, LEAF_NODE_MAX_CELLS, LEAF_NODE_NEXT_LEAF_OFFSET, LEAF_NODE_NUM_CELLS_OFFSET, LEAF_NODE_RIGHT_SPLIT_COUNT};
+use crate::node::{create_new_root, NodeType};
+use crate::node::internal_node::{internal_node_insert, InternalNode, update_internal_node_key};
+use crate::node_layout::{IS_ROOT_OFFSET, LEAF_NODE_CELL_SIZE, LEAF_NODE_HEADER_SIZE, LEAF_NODE_KEY_SIZE, LEAF_NODE_LEFT_SPLIT_COUNT, LEAF_NODE_MAX_CELLS, LEAF_NODE_NEXT_LEAF_OFFSET, LEAF_NODE_NUM_CELLS_OFFSET, LEAF_NODE_RIGHT_SPLIT_COUNT, NODE_TYPE_OFFSET, PARENT_POINTER_OFFSET};
+use crate::pager::Pager;
 use crate::row::{Row, serialize_row};
 
 pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
-    let node = cursor.page();
+    let node = cursor.leaf_node();
 
-    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    let num_cells = node.get_num_cells();
     if num_cells >= LEAF_NODE_MAX_CELLS as u32 {
         // Node full
         leaf_node_split_and_insert(cursor, key, value);
@@ -16,36 +17,34 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
 
     if cursor.cell_num() < num_cells {
         for i in (cursor.cell_num() + 1..=num_cells).rev() {
-            copy_leaf_cell((node, i - 1), (node, i));
+            copy_leaf_cell(node.cell(i-1), node.cell(i));
         }
     }
 
-    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
-    std::ptr::write(leaf_node_num_cells(node) as *mut u32, num_cells + 1);
+    node.set_num_cells(num_cells + 1);
+    node.set_key(cursor.cell_num(), key);
 
-    std::ptr::write(leaf_node_key(node, cursor.cell_num()) as *mut u32, key);
-    serialize_row(value, leaf_node_value(node, cursor.cell_num()));
+    serialize_row(value, node.value(cursor.cell_num()));
 }
 
 unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row) {
-    let old_node = cursor.page();
-    let old_max = get_node_max_key(cursor.pager(), old_node);
+    let old_node = cursor.leaf_node();
+    let old_max = old_node.get_node_max_key(cursor.pager());
+
     let new_page_num = cursor.pager().get_unused_page_num();
     let new_node = cursor.pager().page(new_page_num);
-    initialize_leaf_node(new_node);
+    let new_node = LeafNode::new(new_node);
+    new_node.initialize();
+    new_node.set_parent(old_node.get_parent());
+    new_node.set_next_leaf(old_node.get_next_leaf());
 
-    let old_node_parent = std::ptr::read(node_parent(old_node) as *const u32);
-    std::ptr::write(node_parent(new_node) as *mut u32, old_node_parent);
-
-    let old_node_next = std::ptr::read(leaf_node_next_leaf(old_node) as *const u32);
-    std::ptr::write(leaf_node_next_leaf(new_node) as *mut u32, old_node_next);
-    std::ptr::write(leaf_node_next_leaf(old_node) as *mut u32, new_page_num);
+    old_node.set_next_leaf(new_page_num);
 
     for i in (0..=LEAF_NODE_MAX_CELLS as u32).rev() {
         let destination_node = if i >= LEAF_NODE_LEFT_SPLIT_COUNT as u32 {
-            new_node
+            &new_node
         } else {
-            old_node
+            &old_node
         };
 
         let index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT as u32;
@@ -55,75 +54,151 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row)
         //     i % LEAF_NODE_LEFT_SPLIT_COUNT
         // };
         if i == cursor.cell_num() {
-            let destination = leaf_node_value(destination_node, index_within_node);
-            serialize_row(value, destination);
-            let destination_key = leaf_node_key(destination_node, index_within_node);
-            std::ptr::write(destination_key as *mut u32, key);
+            let dest = destination_node.value(index_within_node);
+            serialize_row(value, dest);
+            destination_node.set_key(index_within_node, key);
         } else if i > cursor.cell_num() {
-            copy_leaf_cell((old_node, i - 1), (destination_node, index_within_node));
+            let src = old_node.cell(i-1);
+            let dest = destination_node.cell(index_within_node);
+            copy_leaf_cell(src, dest);
         } else {
-            copy_leaf_cell((old_node, i), (destination_node, index_within_node));
+            let src = old_node.cell(i);
+            let dest = destination_node.cell(index_within_node);
+            copy_leaf_cell(src, dest);
         }
     }
 
-    std::ptr::write(
-        leaf_node_num_cells(old_node) as *mut u32,
-        LEAF_NODE_LEFT_SPLIT_COUNT as u32,
-    );
-    std::ptr::write(
-        leaf_node_num_cells(new_node) as *mut u32,
-        LEAF_NODE_RIGHT_SPLIT_COUNT as u32,
-    );
+    old_node.set_num_cells(LEAF_NODE_LEFT_SPLIT_COUNT as u32);
+    new_node.set_num_cells(LEAF_NODE_RIGHT_SPLIT_COUNT as u32);
 
-    if is_node_root(old_node) {
-        create_new_root(cursor.table(), new_page_num.try_into().unwrap());
+    if old_node.is_root() {
+        create_new_root(cursor.table(), new_page_num);
     } else {
-        let parent_page_num = std::ptr::read(node_parent(old_node) as *const u32);
-        let new_max = get_node_max_key(cursor.pager(), old_node);
+        let parent_page_num = old_node.get_parent();
+        let new_max = old_node.get_node_max_key(cursor.pager());
         let parent = cursor.pager().page(parent_page_num);
-        update_internal_node_key(parent, old_max, new_max);
+        let parent = InternalNode::new(parent);
+        update_internal_node_key(&parent, old_max, new_max);
         internal_node_insert(cursor.table(), parent_page_num, new_page_num);
     }
 }
 
 #[allow(dead_code)]
 pub unsafe fn print_leaf_node(node: *mut u8) {
-    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    let node = LeafNode::new(node);
+    let num_cells = node.get_num_cells();
     println!("leaf (size {})", num_cells);
     for i in 0..num_cells {
-        let key = std::ptr::read(leaf_node_key(node, i) as *const u32);
+        let key = node.get_key(i);
         println!("   - {} : {}", i, key);
     }
 }
 
-pub unsafe fn leaf_node_num_cells(node: *mut u8) -> *mut u8 {
-    node.add(LEAF_NODE_NUM_CELLS_OFFSET)
+pub unsafe fn get_leaf_node_num_cells(node: *mut u8) -> u32 {
+    let data = LeafNode::new(node);
+    data.get_num_cells()
 }
 
-pub unsafe fn leaf_node_cell(node: *mut u8, cell_num: u32) -> *mut u8 {
-    node.add(LEAF_NODE_HEADER_SIZE + cell_num as usize * LEAF_NODE_CELL_SIZE)
-}
-
-pub unsafe fn leaf_node_key(node: *mut u8, cell_num: u32) -> *mut u8 {
-    leaf_node_cell(node, cell_num)
+pub unsafe fn get_leaf_node_key(node: *mut u8, cell_num: u32) -> u32 {
+    let node = LeafNode::new(node);
+    node.get_key(cell_num)
 }
 
 pub unsafe fn leaf_node_value(node: *mut u8, cell_num: u32) -> *mut u8 {
-    leaf_node_cell(node, cell_num).add(LEAF_NODE_KEY_SIZE)
+    let node = LeafNode::new(node);
+    node.value(cell_num)
 }
 
-pub unsafe fn leaf_node_next_leaf(node: *mut u8) -> *mut u8 {
-    node.add(LEAF_NODE_NEXT_LEAF_OFFSET)
+pub unsafe fn get_leaf_node_next_leaf(node: *mut u8) -> u32 {
+    let node = LeafNode::new(node);
+    node.get_next_leaf()
 }
 
 pub unsafe fn initialize_leaf_node(node: *mut u8) {
-    std::ptr::write(leaf_node_num_cells(node) as *mut u32, 0);
-    std::ptr::write(leaf_node_next_leaf(node) as *mut u32, 0);
-    set_node_type(node, NodeType::Leaf);
-    set_node_root(node, false);
+    let node = LeafNode::new(node);
+    node.initialize();
 }
-unsafe fn copy_leaf_cell(src: (*mut u8, u32), dest: (*mut u8, u32)) {
-    let src_cell = leaf_node_cell(src.0, src.1);
-    let dest_cell = leaf_node_cell(dest.0, dest.1);
-    std::ptr::copy_nonoverlapping(src_cell, dest_cell, LEAF_NODE_CELL_SIZE);
+
+unsafe fn copy_leaf_cell(src: *mut u8, dest: *mut u8) {
+    std::ptr::copy_nonoverlapping(src, dest, LEAF_NODE_CELL_SIZE);
+}
+
+pub struct LeafNode {
+    data: *mut u8,
+}
+impl LeafNode {
+    pub fn new(data: *mut u8) -> Self {
+        Self {
+            data,
+        }
+    }
+    pub unsafe fn initialize(&self) {
+        self.set_num_cells(0);
+        self.set_next_leaf(0);
+        self.set_node_type(NodeType::Leaf);
+        self.set_root(false);
+    }
+    pub unsafe fn is_root(&self) -> bool {
+        let value = std::ptr::read(self.data.add(IS_ROOT_OFFSET) as *const u8);
+        return if value == 0 { false } else if value == 1 { true } else { panic!("invalid value"); }
+    }
+    pub unsafe fn set_root(&self, is_root: bool) {
+        std::ptr::write(
+            self.data.add(IS_ROOT_OFFSET),
+            if is_root == true { 1u8 } else { 0u8 },
+        );
+    }
+    unsafe fn get_node_type(&self) -> NodeType {
+        let value = *self.data.add(NODE_TYPE_OFFSET);
+        value.into()
+    }
+    unsafe fn set_node_type(&self, node_type: NodeType) {
+        let value = node_type.into();
+        std::ptr::write(self.data.add(NODE_TYPE_OFFSET), value);
+    }
+
+    pub unsafe fn value(&self, cell_num: u32) -> *mut u8 {
+        self.cell(cell_num).add(LEAF_NODE_KEY_SIZE)
+    }
+
+    pub unsafe fn next_leaf(&self) -> *mut u8 {
+        self.data.add(LEAF_NODE_NEXT_LEAF_OFFSET)
+    }
+    pub unsafe fn get_next_leaf(&self) -> u32 {
+        std::ptr::read(self.data.add(LEAF_NODE_NEXT_LEAF_OFFSET) as *const u32)
+    }
+    pub unsafe fn set_next_leaf(&self, next: u32) {
+        std::ptr::write(self.data.add(LEAF_NODE_NEXT_LEAF_OFFSET) as *mut u32, next);
+    }
+
+    pub unsafe fn cell(&self, cell_num: u32) -> *mut u8 {
+        self.data.add(LEAF_NODE_HEADER_SIZE + cell_num as usize * LEAF_NODE_CELL_SIZE)
+    }
+    unsafe fn num_cells(&self) -> *mut u8 {
+        self.data.add(LEAF_NODE_NUM_CELLS_OFFSET)
+    }
+    pub unsafe fn get_num_cells(&self) -> u32 {
+        std::ptr::read(self.num_cells() as *const u32)
+    }
+    pub unsafe fn set_num_cells(&self, num_cells: u32) {
+        std::ptr::write(self.num_cells() as *mut u32, num_cells)
+    }
+    pub unsafe fn get_key(&self, cell_num: u32) -> u32 {
+        std::ptr::read(self.cell(cell_num) as *const u32)
+    }
+    pub unsafe fn set_key(&self, cell_num: u32, key: u32) {
+        std::ptr::write(self.cell(cell_num) as *mut u32, key);
+    }
+
+    pub unsafe fn get_parent(&self) -> u32 {
+        std::ptr::read(self.data.add(PARENT_POINTER_OFFSET) as *const u32)
+    }
+    pub unsafe fn set_parent(&self, parent: u32) {
+        std::ptr::write(self.data.add(PARENT_POINTER_OFFSET) as *mut u32, parent);
+    }
+
+    unsafe fn get_node_max_key(&self, pager: &mut Pager) -> u32 {
+        let num_cells = self.get_num_cells();
+        self.get_key(num_cells - 1)
+    }
 }

@@ -1,6 +1,6 @@
 use crate::node::{get_node_type, NodeType};
-use crate::node::internal_node::{internal_node_child, internal_node_key, internal_node_num_keys};
-use crate::node::leaf_node::{leaf_node_key, leaf_node_next_leaf, leaf_node_num_cells, leaf_node_value};
+use crate::node::internal_node::{internal_node_child, InternalNode};
+use crate::node::leaf_node::{get_leaf_node_num_cells, LeafNode};
 use crate::pager::Pager;
 use crate::table::Table;
 
@@ -14,7 +14,7 @@ pub struct Cursor<'a> {
 pub unsafe fn table_start(table: &mut Table) -> Cursor {
     let mut cursor = table_find(table, 0);
     let node = cursor.page();
-    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    let num_cells = get_leaf_node_num_cells(node);
     cursor.end_of_table = num_cells == 0;
 
     cursor
@@ -23,7 +23,7 @@ pub unsafe fn table_start(table: &mut Table) -> Cursor {
 pub fn table_end(table: &mut Table) -> Cursor {
     let root_page_num = table.root_page_num();
     let root_node = table.pager().page(root_page_num);
-    let num_cells = unsafe { std::ptr::read(leaf_node_num_cells(root_node) as *const u32) };
+    let num_cells = unsafe { get_leaf_node_num_cells(root_node) };
 
     Cursor {
         table,
@@ -45,7 +45,8 @@ pub unsafe fn table_find(table: &mut Table, key: u32) -> Cursor {
 
 pub unsafe fn leaf_node_find(table: &mut Table, page_num: u32, key: u32) -> Cursor {
     let node = table.pager().page(page_num);
-    let num_cells = std::ptr::read(leaf_node_num_cells(node) as *const u32);
+    let node = LeafNode::new(node);
+    let num_cells = node.get_num_cells();
 
     // Binary search
     let mut min_index = 0u32;
@@ -53,7 +54,7 @@ pub unsafe fn leaf_node_find(table: &mut Table, page_num: u32, key: u32) -> Curs
 
     while one_past_max_index != min_index {
         let index = (min_index + one_past_max_index) / 2;
-        let key_at_index = std::ptr::read(leaf_node_key(node, index) as *const u32);
+        let key_at_index = node.get_key(index);
 
         if key == key_at_index {
             return Cursor {
@@ -81,8 +82,9 @@ pub unsafe fn leaf_node_find(table: &mut Table, page_num: u32, key: u32) -> Curs
 
 unsafe fn internal_node_find(table: &mut Table, page_number: u32, key: u32) -> Cursor {
     let node = table.pager().page(page_number);
-    let child_index = internal_node_find_child(node, key);
-    let child_num = std::ptr::read(internal_node_child(node, child_index) as *const u32);
+    let node = InternalNode::new(node);
+    let child_index = internal_node_find_child(&node, key);
+    let child_num = node.get_child(child_index);
     let child = table.pager().page(child_num);
     match get_node_type(child) {
         NodeType::Internal => internal_node_find(table, child_num, key),
@@ -90,15 +92,15 @@ unsafe fn internal_node_find(table: &mut Table, page_number: u32, key: u32) -> C
     }
 }
 
-pub unsafe fn internal_node_find_child(node: *mut u8, key: u32) -> u32 {
-    let num_keys = std::ptr::read(internal_node_num_keys(node) as *const u32);
+pub unsafe fn internal_node_find_child(node: &InternalNode, key: u32) -> u32 {
+    let num_keys = node.get_num_keys();
 
     let mut min_index = 0u32;
     let mut max_index = num_keys;
 
     while min_index != max_index {
         let index = (min_index + max_index) / 2;
-        let key_to_right = std::ptr::read(internal_node_key(node, index) as *const u32);
+        let key_to_right = node.get_key(index);
         if key_to_right >= key {
             max_index = index;
         } else {
@@ -112,11 +114,12 @@ pub unsafe fn internal_node_find_child(node: *mut u8, key: u32) -> u32 {
 impl Cursor<'_> {
     pub fn advance(&mut self) {
         let node = self.page();
+        let node = LeafNode::new(node);
         self.cell_num += 1;
 
         unsafe {
-            if self.cell_num >= std::ptr::read(leaf_node_num_cells(node) as *const u32) {
-                let next_page_num = std::ptr::read(leaf_node_next_leaf(node) as *const u32);
+            if self.cell_num >= node.get_next_leaf() {
+                let next_page_num = node.get_next_leaf();
                 if next_page_num == 0 {
                     self.end_of_table = true;
                 } else {
@@ -129,7 +132,8 @@ impl Cursor<'_> {
 
     pub unsafe fn value(&mut self) -> *mut u8 {
         let page = self.page();
-        leaf_node_value(page, self.cell_num)
+        let node = LeafNode::new(page);
+        node.value(self.cell_num)
     }
 
     pub fn end_of_table(&self) -> bool {
@@ -138,6 +142,13 @@ impl Cursor<'_> {
 
     pub fn page(&mut self) -> *mut u8 {
         self.table.pager().page(self.page_num)
+    }
+
+    pub fn leaf_node(&mut self) -> LeafNode {
+        LeafNode::new(self.page())
+    }
+    pub fn internal_node(&mut self) -> InternalNode {
+        InternalNode::new(self.page())
     }
 
     pub fn table(&mut self) -> &mut Table {
