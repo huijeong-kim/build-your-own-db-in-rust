@@ -43,11 +43,7 @@ describe 'database' do
     end
     script << ".exit"
     result = run_script(script)
-    expect(result.last(2)).to match_array([
-      "db > Executed.",
-      "db > ",
-      #"db > Need to implement splitting internal node",
-    ])
+    expect(result[-2]).to eq('db > Error: Table full.')
   end
 
   it 'allows inserting strings that are the maximum length' do

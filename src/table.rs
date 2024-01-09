@@ -57,10 +57,8 @@ impl Table {
                 }
             }
 
-            leaf_node_insert(&mut cursor, row.id, &row);
+            leaf_node_insert(&mut cursor, row.id, &row)
         }
-
-        ExecuteResult::Success
     }
 
     pub fn select(&mut self) -> ExecuteResult {

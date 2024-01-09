@@ -118,7 +118,7 @@ impl Cursor<'_> {
         self.cell_num += 1;
 
         unsafe {
-            if self.cell_num >= node.get_next_leaf() {
+            if self.cell_num >= node.get_num_cells() {
                 let next_page_num = node.get_next_leaf();
                 if next_page_num == 0 {
                     self.end_of_table = true;

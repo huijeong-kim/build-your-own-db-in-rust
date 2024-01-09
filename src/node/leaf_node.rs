@@ -7,17 +7,17 @@ use crate::node_layout::{
     LEAF_NODE_NUM_CELLS_OFFSET, LEAF_NODE_RIGHT_SPLIT_COUNT, NODE_TYPE_OFFSET,
     PARENT_POINTER_OFFSET,
 };
-use crate::pager::Pager;
+use crate::pager::{Pager, TABLE_MAX_PAGES};
 use crate::row::{serialize_row, Row};
+use crate::statement::ExecuteResult;
 
-pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
+pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) -> ExecuteResult {
     let node = cursor.leaf_node();
 
     let num_cells = node.get_num_cells();
     if num_cells >= LEAF_NODE_MAX_CELLS as u32 {
         // Node full
-        leaf_node_split_and_insert(cursor, key, value);
-        return;
+        return leaf_node_split_and_insert(cursor, key, value);
     }
 
     if cursor.cell_num() < num_cells {
@@ -26,17 +26,24 @@ pub unsafe fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
         }
     }
 
+    //node.set_next_leaf(num_cells);
     node.set_num_cells(num_cells + 1);
     node.set_key(cursor.cell_num(), key);
 
     serialize_row(value, node.value(cursor.cell_num()));
+
+    ExecuteResult::Success
 }
 
-unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row) {
+unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row) -> ExecuteResult {
     let old_node = cursor.leaf_node();
     let old_max = old_node.get_node_max_key(cursor.pager());
 
     let new_page_num = cursor.pager().get_unused_page_num();
+    if new_page_num >= TABLE_MAX_PAGES {
+        return ExecuteResult::TableFull;
+    }
+
     let new_node = cursor.pager().page(new_page_num);
     let new_node = LeafNode::new(new_node);
     new_node.initialize();
@@ -86,6 +93,8 @@ unsafe fn leaf_node_split_and_insert(cursor: &mut Cursor, key: u32, value: &Row)
         update_internal_node_key(&parent, old_max, new_max);
         internal_node_insert(cursor.table(), parent_page_num, new_page_num);
     }
+
+    ExecuteResult::Success
 }
 
 #[allow(dead_code)]
