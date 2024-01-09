@@ -1,5 +1,5 @@
 use crate::cursor::{table_find, table_start};
-use crate::node::leaf_node::{get_leaf_node_key, get_leaf_node_num_cells, initialize_leaf_node, leaf_node_insert, LeafNode};
+use crate::node::leaf_node::{initialize_leaf_node, leaf_node_insert, LeafNode};
 use crate::node::{print_tree, set_node_root};
 use crate::pager::Pager;
 use crate::row::{deserialize_row, Row};

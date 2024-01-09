@@ -1,6 +1,6 @@
-use crate::node::{get_node_type, NodeType};
-use crate::node::internal_node::{internal_node_child, InternalNode};
+use crate::node::internal_node::InternalNode;
 use crate::node::leaf_node::{get_leaf_node_num_cells, LeafNode};
+use crate::node::{get_node_type, NodeType};
 use crate::pager::Pager;
 use crate::table::Table;
 

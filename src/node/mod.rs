@@ -1,11 +1,15 @@
-use crate::node_layout::*;
-use crate::pager::{PAGE_SIZE, Pager};
-use crate::table::Table;
-use crate::node::internal_node::{get_internal_node_key, get_internal_node_num_keys, get_internal_node_right_child, initialize_internal_node, internal_node_child, set_internal_node_key, set_internal_node_num_keys, set_internal_node_right_child};
+use crate::node::internal_node::{
+    get_internal_node_key, get_internal_node_num_keys, get_internal_node_right_child,
+    initialize_internal_node, internal_node_child, set_internal_node_key,
+    set_internal_node_num_keys, set_internal_node_right_child,
+};
 use crate::node::leaf_node::{get_leaf_node_key, get_leaf_node_num_cells};
+use crate::node_layout::*;
+use crate::pager::{Pager, PAGE_SIZE};
+use crate::table::Table;
 
-pub mod leaf_node;
 pub mod internal_node;
+pub mod leaf_node;
 
 #[derive(PartialEq)]
 pub enum NodeType {
@@ -103,10 +107,7 @@ pub unsafe fn print_tree(pager: &mut Pager, page_num: u32, indentation_level: us
                     print_tree(pager, child, indentation_level + 1);
 
                     indent(indentation_level + 1);
-                    println!(
-                        "- key {}",
-                        get_internal_node_key(node, i)
-                    );
+                    println!("- key {}", get_internal_node_key(node, i));
                 }
                 let child = get_internal_node_right_child(node);
                 print_tree(pager, child, indentation_level + 1);
@@ -143,7 +144,13 @@ impl Node {
     }
     pub unsafe fn is_root(&self) -> bool {
         let value = std::ptr::read(self.data.add(IS_ROOT_OFFSET) as *const u8);
-        return if value == 0 { false } else if value == 1 { true } else { panic!("invalid value"); }
+        return if value == 0 {
+            false
+        } else if value == 1 {
+            true
+        } else {
+            panic!("invalid value");
+        };
     }
     pub unsafe fn set_root(&self, is_root: bool) {
         std::ptr::write(
@@ -155,10 +162,10 @@ impl Node {
         self.data.add(PARENT_POINTER_OFFSET)
     }
 
-    pub unsafe fn get_parent(&self) -> u32 {
+    pub unsafe fn _get_parent(&self) -> u32 {
         std::ptr::read(self.data.add(PARENT_POINTER_OFFSET) as *const u32)
     }
-    pub unsafe fn set_parent(&self, parent: u32)  {
+    pub unsafe fn set_parent(&self, parent: u32) {
         std::ptr::write(self.data.add(PARENT_POINTER_OFFSET) as *mut u32, parent);
     }
 
@@ -166,7 +173,7 @@ impl Node {
         let value = *self.data.add(NODE_TYPE_OFFSET);
         value.into()
     }
-    pub unsafe fn set_node_type(&self,  node_type: NodeType) {
+    pub unsafe fn _set_node_type(&self, node_type: NodeType) {
         let value = node_type.into();
         std::ptr::write(self.data.add(NODE_TYPE_OFFSET), value);
     }
@@ -184,7 +191,6 @@ impl Node {
             }
         }
     }
-
 }
 unsafe fn is_node_root(node: *mut u8) -> bool {
     let node = Node::new(node);

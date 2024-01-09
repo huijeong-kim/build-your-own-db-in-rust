@@ -1,9 +1,13 @@
-use libc::{exit, EXIT_FAILURE};
 use crate::cursor::internal_node_find_child;
-use crate::node::{create_new_root, get_node_max_key, is_node_root, Node, node_parent, NodeType};
-use crate::node_layout::{INTERNAL_NODE_CELL_SIZE, INTERNAL_NODE_CHILD_SIZE, INTERNAL_NODE_HEADER_SIZE, INTERNAL_NODE_MAX_CELLS, INTERNAL_NODE_NUM_KEYS_OFFSET, INTERNAL_NODE_RIGHT_CHILD_OFFSET, IS_ROOT_OFFSET, NODE_TYPE_OFFSET, PARENT_POINTER_OFFSET};
+use crate::node::{create_new_root, get_node_max_key, is_node_root, node_parent, Node, NodeType};
+use crate::node_layout::{
+    INTERNAL_NODE_CELL_SIZE, INTERNAL_NODE_CHILD_SIZE, INTERNAL_NODE_HEADER_SIZE,
+    INTERNAL_NODE_MAX_CELLS, INTERNAL_NODE_NUM_KEYS_OFFSET, INTERNAL_NODE_RIGHT_CHILD_OFFSET,
+    IS_ROOT_OFFSET, NODE_TYPE_OFFSET, PARENT_POINTER_OFFSET,
+};
 use crate::pager::Pager;
-use crate::table::{INVALID_PAGE_NUM, Table};
+use crate::table::{Table, INVALID_PAGE_NUM};
+use libc::{exit, EXIT_FAILURE};
 
 unsafe fn internal_node_split_and_insert(
     table: &mut Table,
@@ -26,7 +30,7 @@ unsafe fn internal_node_split_and_insert_root(
     child_page_num: u32,
 ) {
     let mut old_page_num = parent_page_num;
-    let old  = table.pager().page(old_page_num);
+    let old = table.pager().page(old_page_num);
     let old_node = InternalNode::new(old);
     let old_max = old_node.get_node_max_key(table.pager());
 
@@ -41,7 +45,7 @@ unsafe fn internal_node_split_and_insert_root(
     let parent = table.pager().page(root_page_num);
     let parent = InternalNode::new(parent);
 
-    old_page_num =  parent.get_child(0);
+    old_page_num = parent.get_child(0);
     let old_node = table.pager().page(old_page_num);
     let old_node = InternalNode::new(old_node);
 
@@ -157,7 +161,6 @@ unsafe fn internal_node_split_and_insert_non_root(
     new_node.set_parent(old_node_parent);
 }
 
-
 pub unsafe fn internal_node_insert(table: &mut Table, parent_page_num: u32, child_page_num: u32) {
     let parent = table.pager().page(parent_page_num);
     let parent = InternalNode::new(parent);
@@ -184,12 +187,15 @@ pub unsafe fn internal_node_insert(table: &mut Table, parent_page_num: u32, chil
     if child_max_key > get_node_max_key(table.pager(), right_child) {
         // Replace right child
         parent.set_child(original_num_keys, right_child_page_num);
-        parent.set_key(original_num_keys, get_node_max_key(table.pager(), right_child));
+        parent.set_key(
+            original_num_keys,
+            get_node_max_key(table.pager(), right_child),
+        );
         parent.set_right_child(child_page_num);
     } else {
         // Add to new cell
         for i in (index + 1..=original_num_keys).rev() {
-            let src = parent.cell(i-1);
+            let src = parent.cell(i - 1);
             let dest = parent.cell(i);
             copy_internal_cell(src, dest);
         }
@@ -198,7 +204,6 @@ pub unsafe fn internal_node_insert(table: &mut Table, parent_page_num: u32, chil
         parent.set_key(index, child_max_key);
     }
 }
-
 
 pub unsafe fn update_internal_node_key(node: &InternalNode, old_key: u32, new_key: u32) {
     let old_child_index = internal_node_find_child(node, old_key);
@@ -238,7 +243,7 @@ pub unsafe fn get_internal_node_key(node: *mut u8, cell_num: u32) -> u32 {
     let node = InternalNode::new(node);
     node.get_key(cell_num)
 }
-pub unsafe fn set_internal_node_key(node: *mut u8, cell_num: u32, key: u32)  {
+pub unsafe fn set_internal_node_key(node: *mut u8, cell_num: u32, key: u32) {
     let node = InternalNode::new(node);
     node.set_key(cell_num, key);
 }
@@ -256,9 +261,7 @@ pub struct InternalNode {
 }
 impl InternalNode {
     pub fn new(data: *mut u8) -> Self {
-        Self {
-            data,
-        }
+        Self { data }
     }
     pub unsafe fn initialize(&self) {
         self.set_node_type(NodeType::Internal);
@@ -268,10 +271,15 @@ impl InternalNode {
         set_internal_node_right_child(self.data, INVALID_PAGE_NUM);
     }
 
-
     pub unsafe fn is_root(&self) -> bool {
         let value = std::ptr::read(self.data.add(IS_ROOT_OFFSET) as *const u8);
-        return if value == 0 { false } else if value == 1 { true } else { panic!("invalid value"); }
+        return if value == 0 {
+            false
+        } else if value == 1 {
+            true
+        } else {
+            panic!("invalid value");
+        };
     }
     pub unsafe fn set_root(&self, is_root: bool) {
         std::ptr::write(
@@ -279,7 +287,7 @@ impl InternalNode {
             if is_root == true { 1u8 } else { 0u8 },
         );
     }
-    unsafe fn get_node_type(&self) -> NodeType {
+    unsafe fn _get_node_type(&self) -> NodeType {
         let value = *self.data.add(NODE_TYPE_OFFSET);
         value.into()
     }
@@ -289,21 +297,30 @@ impl InternalNode {
     }
 
     pub unsafe fn get_key(&self, cell_num: u32) -> u32 {
-        std::ptr::read(internal_node_cell(self.data, cell_num).add(INTERNAL_NODE_CHILD_SIZE) as *const u32)
+        std::ptr::read(
+            internal_node_cell(self.data, cell_num).add(INTERNAL_NODE_CHILD_SIZE) as *const u32,
+        )
     }
-    pub unsafe fn set_key(&self, cell_num: u32, key: u32)  {
-        std::ptr::write(internal_node_cell(self.data, cell_num).add(INTERNAL_NODE_CHILD_SIZE) as *mut u32, key);
+    pub unsafe fn set_key(&self, cell_num: u32, key: u32) {
+        std::ptr::write(
+            internal_node_cell(self.data, cell_num).add(INTERNAL_NODE_CHILD_SIZE) as *mut u32,
+            key,
+        );
     }
 
     pub unsafe fn cell(&self, cell_num: u32) -> *mut u8 {
-        self.data.add(INTERNAL_NODE_HEADER_SIZE + cell_num as usize * INTERNAL_NODE_CELL_SIZE)
+        self.data
+            .add(INTERNAL_NODE_HEADER_SIZE + cell_num as usize * INTERNAL_NODE_CELL_SIZE)
     }
 
     pub unsafe fn get_num_keys(&self) -> u32 {
         std::ptr::read(self.data.add(INTERNAL_NODE_NUM_KEYS_OFFSET) as *const u32)
     }
     pub unsafe fn set_num_keys(&self, num_keys: u32) {
-        std::ptr::write(self.data.add(INTERNAL_NODE_NUM_KEYS_OFFSET) as *mut u32, num_keys);
+        std::ptr::write(
+            self.data.add(INTERNAL_NODE_NUM_KEYS_OFFSET) as *mut u32,
+            num_keys,
+        );
     }
 
     pub unsafe fn get_right_child(&self) -> u32 {
@@ -311,7 +328,10 @@ impl InternalNode {
     }
 
     pub unsafe fn set_right_child(&self, child: u32) {
-        std::ptr::write(self.data.add(INTERNAL_NODE_RIGHT_CHILD_OFFSET) as *mut u32, child);
+        std::ptr::write(
+            self.data.add(INTERNAL_NODE_RIGHT_CHILD_OFFSET) as *mut u32,
+            child,
+        );
     }
 
     unsafe fn right_child(&self) -> *mut u8 {
@@ -382,7 +402,6 @@ impl InternalNode {
         std::ptr::read(self.child(cell) as *const u32)
     }
 
-
     pub unsafe fn update_key(&self, old_key: u32, new_key: u32) {
         let old_child_index = self.find_child(old_key);
         self.set_key(old_child_index, new_key);
@@ -391,7 +410,7 @@ impl InternalNode {
     pub unsafe fn get_parent(&self) -> u32 {
         std::ptr::read(self.data.add(PARENT_POINTER_OFFSET) as *const u32)
     }
-    pub unsafe fn set_parent(&self, parent: u32)  {
+    pub unsafe fn set_parent(&self, parent: u32) {
         std::ptr::write(self.data.add(PARENT_POINTER_OFFSET) as *mut u32, parent);
     }
 }
