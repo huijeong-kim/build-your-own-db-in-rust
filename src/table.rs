@@ -1,6 +1,6 @@
 use crate::cursor::{table_find, table_start};
-use crate::node::leaf_node::{initialize_leaf_node, leaf_node_insert, LeafNode};
-use crate::node::{print_tree, set_node_root};
+use crate::node::leaf_node::{leaf_node_insert, LeafNode};
+use crate::node::{print_tree, NodeTrait};
 use crate::pager::Pager;
 use crate::row::{deserialize_row, Row};
 use crate::statement::ExecuteResult;
@@ -25,9 +25,10 @@ impl Table {
         if pager.num_pages() == 0 {
             // New database file. Initialize page 0 as leaf node.
             let root_node = pager.page(0);
+            let root_node = LeafNode::new(root_node);
             unsafe {
-                initialize_leaf_node(root_node);
-                set_node_root(root_node, true);
+                root_node.initialize();
+                root_node.set_root(true);
             }
         }
         self.pager = Some(pager);
@@ -45,42 +46,36 @@ impl Table {
         let root_page = self.pager().page(root_page_num);
         let root_node = LeafNode::new(root_page);
 
-        unsafe {
-            let num_cells = root_node.get_num_cells();
-            let key_to_insert = row.id;
-            let mut cursor = table_find(self, key_to_insert);
+        let key_to_insert = row.id;
+        let mut cursor = table_find(self, key_to_insert);
 
-            if cursor.cell_num() < num_cells {
-                let key_at_index = root_node.get_key(cursor.cell_num());
-                if key_at_index == key_to_insert {
-                    return ExecuteResult::DuplicateKey;
-                }
+        let num_cells = root_node.get_num_cells();
+        if cursor.cell_num() < num_cells {
+            let key_at_index = root_node.get_key(cursor.cell_num());
+            if key_at_index == key_to_insert {
+                return ExecuteResult::DuplicateKey;
             }
-
-            leaf_node_insert(&mut cursor, row.id, &row)
         }
+
+        leaf_node_insert(&mut cursor, row.id, &row)
     }
 
     pub fn select(&mut self) -> ExecuteResult {
         let mut row = Row::new();
+        let mut cursor = table_start(self);
 
-        unsafe {
-            let mut cursor = table_start(self);
-            while !cursor.end_of_table() {
-                deserialize_row(cursor.value(), &mut row);
+        while !cursor.end_of_table() {
+            deserialize_row(cursor.value(), &mut row);
 
-                println!("{}", row);
-                cursor.advance();
-            }
+            println!("{}", row);
+            cursor.advance();
         }
 
         ExecuteResult::Success
     }
 
     pub fn print(&mut self) {
-        unsafe {
-            print_tree(self.pager(), 0, 0);
-        }
+        print_tree(self.pager(), 0, 0);
     }
 
     pub fn root_page_num(&self) -> u32 {

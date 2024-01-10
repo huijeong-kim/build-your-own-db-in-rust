@@ -35,7 +35,7 @@ impl Pager {
 
         Pager {
             file,
-            num_pages: file_length as u32 / PAGE_SIZE,
+            num_pages: file_length / PAGE_SIZE,
             pages: [None; TABLE_MAX_PAGES as usize],
         }
     }
@@ -85,7 +85,7 @@ impl Pager {
     }
 
     pub fn page(&mut self, page_num: u32) -> *mut u8 {
-        if page_num > TABLE_MAX_PAGES {
+        if page_num >= TABLE_MAX_PAGES {
             println!(
                 "Tried to fetch page number out of bounds. {} > {}",
                 page_num, TABLE_MAX_PAGES
@@ -93,38 +93,9 @@ impl Pager {
             exit(EXIT_FAILURE);
         }
 
-        let mut page = [0; PAGE_SIZE as usize];
-
         if self.pages[page_num as usize].is_none() {
             // Cache miss. Allocate memory and load from file.
-            let file_length = self.file.metadata().unwrap().len() as u32;
-            let mut num_pages = file_length / PAGE_SIZE;
-            if file_length % PAGE_SIZE != 0 {
-                num_pages += 1;
-            }
-
-            if page_num <= num_pages {
-                self.file
-                    .seek(SeekFrom::Start((page_num * PAGE_SIZE) as u64))
-                    .unwrap();
-
-                let len_to_read = if (page_num + 1) * PAGE_SIZE > file_length {
-                    file_length - (page_num * PAGE_SIZE)
-                } else {
-                    PAGE_SIZE
-                };
-
-                if let Err(e) = self.file.read_exact(&mut page[0..len_to_read as usize]) {
-                    println!("Error reading file: {:?}", e.raw_os_error());
-                    exit(EXIT_FAILURE);
-                }
-            }
-
-            self.pages[page_num as usize] = Some(page);
-
-            if page_num >= self.num_pages {
-                self.num_pages = page_num + 1;
-            }
+            self.handle_page_miss(page_num);
         }
 
         self.pages[page_num as usize].as_ref().unwrap().as_ptr() as *mut _
@@ -132,5 +103,38 @@ impl Pager {
 
     pub fn num_pages(&self) -> u32 {
         self.num_pages
+    }
+
+    fn handle_page_miss(&mut self, page_num: u32) {
+        let mut page = [0; PAGE_SIZE as usize];
+
+        let file_size = self.file_size() as u32;
+        let mut num_pages = file_size / PAGE_SIZE;
+        if file_size % PAGE_SIZE != 0 {
+            num_pages += 1;
+        }
+
+        if page_num <= num_pages {
+            self.file
+                .seek(SeekFrom::Start((page_num * PAGE_SIZE) as u64))
+                .unwrap();
+
+            let len_to_read = if (page_num + 1) * PAGE_SIZE > file_size {
+                file_size - (page_num * PAGE_SIZE)
+            } else {
+                PAGE_SIZE
+            };
+
+            if let Err(e) = self.file.read_exact(&mut page[0..len_to_read as usize]) {
+                println!("Error reading file: {:?}", e.raw_os_error());
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        self.pages[page_num as usize] = Some(page);
+
+        if page_num >= self.num_pages {
+            self.num_pages = page_num + 1;
+        }
     }
 }

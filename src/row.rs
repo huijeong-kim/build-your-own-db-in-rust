@@ -43,20 +43,25 @@ const USERNAME_OFFSET: usize = ID_OFFSET + ID_SIZE;
 const EMAIL_OFFSET: usize = USERNAME_OFFSET + USERNAME_SIZE;
 pub const ROW_SIZE: usize = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
 
-pub unsafe fn serialize_row(source: &Row, dest: *mut u8) {
-    std::ptr::write(dest.add(ID_OFFSET) as *mut u32, source.id);
-    std::ptr::write(
-        dest.add(USERNAME_OFFSET) as *mut [u8; COLUMN_USERNAME_SIZE],
-        source.username,
-    );
-    std::ptr::write(
-        dest.add(EMAIL_OFFSET) as *mut [u8; COLUMN_EMAIL_SIZE],
-        source.email,
-    );
+pub fn serialize_row(source: &Row, dest: *mut u8) {
+    unsafe {
+        std::ptr::write(dest.add(ID_OFFSET) as *mut u32, source.id);
+        std::ptr::write(
+            dest.add(USERNAME_OFFSET) as *mut [u8; COLUMN_USERNAME_SIZE],
+            source.username,
+        );
+        std::ptr::write(
+            dest.add(EMAIL_OFFSET) as *mut [u8; COLUMN_EMAIL_SIZE],
+            source.email,
+        );
+    }
 }
 
-pub unsafe fn deserialize_row(source: *const u8, dest: &mut Row) {
-    dest.id = std::ptr::read(source.add(ID_OFFSET) as *mut u32);
-    dest.username = std::ptr::read(source.add(USERNAME_OFFSET) as *mut [u8; COLUMN_USERNAME_SIZE]);
-    dest.email = std::ptr::read(source.add(EMAIL_OFFSET) as *mut [u8; COLUMN_EMAIL_SIZE]);
+pub fn deserialize_row(source: *const u8, dest: &mut Row) {
+    unsafe {
+        dest.id = std::ptr::read(source.add(ID_OFFSET) as *mut u32);
+        dest.username =
+            std::ptr::read(source.add(USERNAME_OFFSET) as *mut [u8; COLUMN_USERNAME_SIZE]);
+        dest.email = std::ptr::read(source.add(EMAIL_OFFSET) as *mut [u8; COLUMN_EMAIL_SIZE]);
+    }
 }
